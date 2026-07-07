@@ -652,11 +652,37 @@ input {
 }
 
 .hotword-word {
+  display: block;
+  min-width: 0;
   color: #f2f5ff;
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Top 热词分层配色：Top1 最深，Top2/Top3 渐浅 */
+.hotword-list .hotword-item:nth-child(1) .hotword-word {
+  color: #8f1d1d;
+  font-weight: 800;
+}
+
+.hotword-list .hotword-item:nth-child(2) .hotword-word {
+  background: linear-gradient(180deg, #b94141 0%, #dc6b6b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+
+.hotword-list .hotword-item:nth-child(3) .hotword-word {
+  background: linear-gradient(180deg, #cf7a7a 0%, #e8aaaa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
 }
 
 .hotword-count {
@@ -1697,6 +1723,7 @@ body {
 
 .ranking-head,
 .hotword-head span,
+.hotword-word,
 .rank-user em,
 .chat-body,
 .chat-text {

@@ -198,6 +198,14 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function truncateHotwordText(text, maxChars = 10) {
+  const source = String(text || "").trim();
+  if (!source) return "（空）";
+  const chars = Array.from(source);
+  if (chars.length <= maxChars) return source;
+  return `${chars.slice(0, maxChars).join("")}…`;
+}
+
 function resolveApiUrl(path) {
   const base = APP_CONFIG.apiBase.replace(/\/$/, "");
   return `${base}${path}`;
@@ -431,18 +439,32 @@ function renderHotwords(topCandidates = [], triggered = false) {
   hotwordList.innerHTML = "";
 
   topCandidates.slice(0, 5).forEach((item, idx) => {
+    const rawWord = String(item?.word || "").trim();
+    const displayWord = truncateHotwordText(rawWord, 10);
     const li = document.createElement("li");
     li.className = "hotword-item";
-    li.dataset.text = item.word;
+    li.dataset.text = rawWord;
     li.setAttribute("role", "button");
     li.setAttribute("tabindex", "0");
-    li.setAttribute("aria-label", `点击解释热词 ${item.word}`);
-    li.title = `点击解释：${item.word}`;
-    li.innerHTML = `
-      <span class="hotword-rank">${idx + 1}</span>
-      <span class="hotword-word">${item.word}</span>
-      <strong class="hotword-count">${item.count}</strong>
-    `;
+    li.setAttribute("aria-label", `点击解释热词 ${rawWord || "（空）"}`);
+    li.title = rawWord ? `点击解释：${rawWord}` : "点击解释：空文本";
+
+    const rankSpan = document.createElement("span");
+    rankSpan.className = "hotword-rank";
+    rankSpan.textContent = String(idx + 1);
+
+    const wordSpan = document.createElement("span");
+    wordSpan.className = "hotword-word";
+    wordSpan.textContent = displayWord;
+    if (rawWord) {
+      wordSpan.title = rawWord;
+    }
+
+    const countStrong = document.createElement("strong");
+    countStrong.className = "hotword-count";
+    countStrong.textContent = String(item?.count ?? 0);
+
+    li.append(rankSpan, wordSpan, countStrong);
 
     li.addEventListener("click", (event) => {
       event.stopPropagation();
