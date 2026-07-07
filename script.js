@@ -10,6 +10,9 @@ const modalSourceText = document.getElementById("modal-source-text");
 const modalDesc = document.getElementById("modal-desc");
 const modalNote = document.getElementById("modal-note");
 const modalStatus = document.getElementById("modal-status");
+const ratingPanel = document.getElementById("rating-panel");
+const ratingStars = Array.from(document.querySelectorAll(".rating-star"));
+const ratingSummary = document.getElementById("rating-summary");
 const suggestionActions = document.getElementById("suggestion-actions");
 const respondTriggerBtn = document.getElementById("respond-trigger-btn");
 const explainReadyBubble = document.getElementById("explain-ready-bubble");
@@ -42,6 +45,8 @@ const REQUEST_TIMEOUT_MS = 30000;
 const EXPLAIN_TIMEOUT_MS = 70000;
 const RESPOND_TIMEOUT_MS = 50000;
 const FALLBACK_TEXT = "梗小虎还没学会这个梗，正在努力修行中……";
+const SCORE_BY_STAR = [2, 4, 6, 8, 10];
+const LOCAL_USER_ID_KEY = "meme_user_id";
 
 const seedDanmaku = [
   "之前也玩apex洛克王国",
@@ -176,6 +181,15 @@ let modalDragOriginX = 0;
 let modalDragOriginY = 0;
 const MORPH_PREPARE_MS = 260;
 const MORPH_DURATION_MS = 700;
+let isRatingLoading = false;
+let currentExplainMeta = {
+  ratingEnabled: false,
+  kbKey: "",
+  avgScore: null,
+  ratingCount: 0,
+  userScore: null,
+  selectedText: ""
+};
 
 function getLaneMetrics() {
   const stageHeight = danmakuStage.clientHeight || 520;
@@ -208,6 +222,130 @@ function clamp(value, min, max) {
 function parsePxValue(rawValue) {
   const parsed = Number.parseFloat(String(rawValue || "").replace("px", ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getOrCreateLocalUserId() {
+  try {
+    const existing = String(window.localStorage.getItem(LOCAL_USER_ID_KEY) || "").trim();
+    if (existing) return existing;
+    const generated = `u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    window.localStorage.setItem(LOCAL_USER_ID_KEY, generated);
+    return generated;
+  } catch (_) {
+    return `u_fallback_${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+const LOCAL_USER_ID = getOrCreateLocalUserId();
+
+function scoreFromStar(starIndex) {
+  const idx = Number(starIndex) - 1;
+  return SCORE_BY_STAR[idx] || null;
+}
+
+function starFromScore(score) {
+  const parsed = Number(score);
+  if (!Number.isFinite(parsed)) return 0;
+  const index = SCORE_BY_STAR.indexOf(parsed);
+  return index === -1 ? 0 : index + 1;
+}
+
+function normalizeAvgScore(raw) {
+  if (raw === null || raw === undefined) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeUserScore(raw) {
+  if (raw === null || raw === undefined) return null;
+  const parsed = Number(raw);
+  return SCORE_BY_STAR.includes(parsed) ? parsed : null;
+}
+
+function setRatingLoading(loading = false) {
+  isRatingLoading = loading;
+  ratingStars.forEach((star) => {
+    star.disabled = loading || !currentExplainMeta.ratingEnabled;
+  });
+}
+
+function renderRatingUI() {
+  const enabled = Boolean(currentExplainMeta.ratingEnabled);
+  if (!ratingPanel || !ratingSummary) return;
+
+  ratingPanel.classList.toggle("is-hidden", !enabled);
+  if (!enabled) {
+    ratingSummary.textContent = "均分 --";
+    ratingStars.forEach((star) => {
+      star.classList.remove("is-filled");
+      star.disabled = true;
+    });
+    return;
+  }
+
+  const selectedStar = starFromScore(currentExplainMeta.userScore);
+  ratingStars.forEach((star) => {
+    const starNum = Number(star.dataset.star || "0");
+    star.classList.toggle("is-filled", starNum <= selectedStar);
+    star.disabled = isRatingLoading;
+  });
+
+  if ((currentExplainMeta.ratingCount || 0) > 0 && Number.isFinite(currentExplainMeta.avgScore)) {
+    ratingSummary.textContent = `均分 ${Number(currentExplainMeta.avgScore).toFixed(1)}（${currentExplainMeta.ratingCount}次）`;
+  } else {
+    ratingSummary.textContent = "均分 暂无";
+  }
+}
+
+function resetRatingState() {
+  currentExplainMeta = {
+    ratingEnabled: false,
+    kbKey: "",
+    avgScore: null,
+    ratingCount: 0,
+    userScore: null,
+    selectedText: ""
+  };
+  setRatingLoading(false);
+  renderRatingUI();
+}
+
+async function submitMemeRating(starIndex) {
+  if (!currentExplainMeta.ratingEnabled || isRatingLoading) return;
+  const score = scoreFromStar(starIndex);
+  if (!score) return;
+  const selectedText = String(currentExplainMeta.selectedText || "").trim();
+  if (!selectedText) return;
+
+  setRatingLoading(true);
+  setModalStatus(`状态：正在提交${score}分评分`, "loading");
+
+  try {
+    const rateData = await requestJson(
+      "/api/meme/rate",
+      {
+        streamer_id: APP_CONFIG.streamerId,
+        barrage: selectedText,
+        score,
+        user_id: LOCAL_USER_ID,
+        kb_key: currentExplainMeta.kbKey || undefined
+      },
+      { timeoutMs: REQUEST_TIMEOUT_MS }
+    );
+
+    currentExplainMeta.kbKey = String(rateData.kb_key || currentExplainMeta.kbKey || "");
+    currentExplainMeta.avgScore = normalizeAvgScore(rateData.avg_score);
+    currentExplainMeta.ratingCount = Number(rateData.rating_count || 0);
+    currentExplainMeta.userScore = normalizeUserScore(rateData.user_score) || score;
+    renderRatingUI();
+    setModalStatus(`状态：已评分 ${score} 分（可再次点击修正）`, "success");
+  } catch (error) {
+    setModalStatus(`状态：评分失败（${error.message}）`, "error");
+    console.warn("[meme/rate]", error);
+  } finally {
+    setRatingLoading(false);
+    renderRatingUI();
+  }
 }
 
 function setModalDragOffset(x, y) {
@@ -462,6 +600,7 @@ function clearSelection() {
   hidePopover();
   hideModal();
   resetModalDragOffset();
+  resetRatingState();
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
 }
@@ -652,6 +791,7 @@ function showModalLoading(text) {
   modalSourceText.textContent = text;
   modalDesc.textContent = "正在联网检索并生成解释，请稍候…";
   modalNote.textContent = "解释完成后，可点击“回梗”生成建议。";
+  resetRatingState();
   setModalStatus("状态：正在请求梗解释", "loading");
   resetSuggestionActions("解释完成后，点击“回梗”获取建议");
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
@@ -772,11 +912,26 @@ function prepareExplainModalResult({
   note,
   statusText,
   statusLevel,
-  respondMode
+  respondMode,
+  ratingEnabled = false,
+  kbKey = "",
+  avgScore = null,
+  ratingCount = 0,
+  userScore = null
 }) {
   modalSourceText.textContent = selectedText;
   modalDesc.textContent = explanation;
   modalNote.textContent = String(note || "");
+  currentExplainMeta = {
+    ratingEnabled: Boolean(ratingEnabled),
+    kbKey: String(kbKey || ""),
+    avgScore: normalizeAvgScore(avgScore),
+    ratingCount: Number(ratingCount || 0),
+    userScore: normalizeUserScore(userScore),
+    selectedText
+  };
+  setRatingLoading(false);
+  renderRatingUI();
   setModalStatus(String(statusText || ""), statusLevel);
   resetSuggestionActions("点击“回梗”获取主播回梗建议");
   setRespondButtonState({ disabled: false, loading: false, label: "回梗" });
@@ -856,7 +1011,8 @@ async function runExplainFlow(text) {
       {
         streamer_id: APP_CONFIG.streamerId,
         barrage: selectedText,
-        model: APP_CONFIG.model
+        model: APP_CONFIG.model,
+        user_id: LOCAL_USER_ID
       },
       { timeoutMs: EXPLAIN_TIMEOUT_MS, signal: requestController.signal }
     );
@@ -869,7 +1025,12 @@ async function runExplainFlow(text) {
       note: "",
       statusText: "",
       statusLevel: explainData.found ? "success" : "warn",
-      respondMode: "api"
+      respondMode: "api",
+      ratingEnabled: Boolean(explainData.rating_enabled) && explainData.explanation !== FALLBACK_TEXT,
+      kbKey: explainData.kb_key || "",
+      avgScore: explainData.avg_score,
+      ratingCount: explainData.rating_count || 0,
+      userScore: explainData.user_score
     });
 
     emitBotBroadcast(explainData.bot_broadcast || explainData.explanation || "");
@@ -892,7 +1053,8 @@ async function runExplainFlow(text) {
       note: "请检查后端服务、网络或密钥配置后重试；点击“回梗”将使用本地建议。",
       statusText: `状态：请求失败，已本地兜底（${error.message}）`,
       statusLevel: "error",
-      respondMode: "local"
+      respondMode: "local",
+      ratingEnabled: false
     });
     if (isPopoverHiddenWhileThinking) {
       setPopoverExplainState("idle");
@@ -972,6 +1134,7 @@ function selectSourceNode(node, sourceType = "danmaku") {
   pendingRespondPlan = null;
   isPopoverHiddenWhileThinking = false;
   hideReadyBubble();
+  resetRatingState();
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
 
@@ -1074,6 +1237,7 @@ function bootstrap() {
   initModalDrag();
   renderHotwords([], false);
   hideReadyBubble();
+  resetRatingState();
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
   checkBackendHealth();
@@ -1180,6 +1344,21 @@ modalCloseBtn.addEventListener("click", hideModal);
 modalRefreshBtn.addEventListener("click", async () => {
   if (!selectedNode || isExplainLoading || isRespondLoading) return;
   await runExplainFlow(selectedNode.dataset.text || "这条弹幕");
+});
+
+ratingStars.forEach((star) => {
+  star.addEventListener("click", async () => {
+    const starIndex = Number(star.dataset.star || "0");
+    if (!starIndex) return;
+    await submitMemeRating(starIndex);
+  });
+  star.addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    const starIndex = Number(star.dataset.star || "0");
+    if (!starIndex) return;
+    await submitMemeRating(starIndex);
+  });
 });
 
 respondTriggerBtn.addEventListener("click", async () => {

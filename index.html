@@ -98,6 +98,17 @@
                 <p id="modal-status" class="modal-status">状态：待触发</p>
 
                 <div class="explain-card-footer">
+                  <div id="rating-panel" class="rating-panel is-hidden" aria-live="polite">
+                    <span class="rating-label">梗打分</span>
+                    <div id="rating-stars" class="rating-stars" role="radiogroup" aria-label="梗评分（1星=2分，5星=10分）">
+                      <button type="button" class="rating-star" data-star="1" aria-label="2分" title="2分">★</button>
+                      <button type="button" class="rating-star" data-star="2" aria-label="4分" title="4分">★</button>
+                      <button type="button" class="rating-star" data-star="3" aria-label="6分" title="6分">★</button>
+                      <button type="button" class="rating-star" data-star="4" aria-label="8分" title="8分">★</button>
+                      <button type="button" class="rating-star" data-star="5" aria-label="10分" title="10分">★</button>
+                    </div>
+                    <span id="rating-summary" class="rating-summary">均分 --</span>
+                  </div>
                   <button id="modal-refresh-btn" type="button">重新请求解释</button>
                 </div>
               </div>

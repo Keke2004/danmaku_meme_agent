@@ -76,6 +76,7 @@ class MemeExplainIn(BaseModel):
     barrage: str = Field(..., min_length=1)
     api_key: Optional[str] = None
     model: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class MemeExplainOut(BaseModel):
@@ -83,6 +84,26 @@ class MemeExplainOut(BaseModel):
     search_context: str
     explanation: str
     bot_broadcast: str
+    kb_key: Optional[str] = None
+    avg_score: Optional[float] = None
+    rating_count: int = 0
+    user_score: Optional[int] = None
+    rating_enabled: bool = False
+
+
+class MemeRateIn(BaseModel):
+    streamer_id: str = Field(..., min_length=1)
+    barrage: str = Field(..., min_length=1)
+    score: int
+    user_id: str = Field(..., min_length=1, max_length=80)
+    kb_key: Optional[str] = None
+
+
+class MemeRateOut(BaseModel):
+    kb_key: str
+    avg_score: Optional[float]
+    rating_count: int
+    user_score: int
 
 
 class MemeRespondIn(BaseModel):
@@ -131,9 +152,10 @@ streamer_profiles: dict[str, str] = {
 _kb_lock = Lock()
 _kb_exact: dict[str, str] = {}
 _kb_keys: list[str] = []
-_kb_entries: list[dict[str, str]] = []
+_kb_entries: list[dict[str, Any]] = []
 _kb_entry_index: dict[str, int] = {}
 _kb_last_mtime: Optional[float] = None
+VALID_RATING_SCORES = {2, 4, 6, 8, 10}
 
 
 def _now_utc() -> datetime:
@@ -225,18 +247,96 @@ def _similarity_ratio(a: str, b: str) -> float:
     return 1.0 - (distance / max_len)
 
 
+def _normalize_user_id(user_id: Optional[str]) -> str:
+    raw = str(user_id or "").strip()
+    if not raw:
+        return ""
+    compact = re.sub(r"\s+", "", raw)
+    return compact[:80]
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_score(value: Any) -> Optional[int]:
+    score = _safe_int(value, -1)
+    if score in VALID_RATING_SCORES:
+        return score
+    return None
+
+
+def _extract_rating_state(record: dict[str, Any]) -> tuple[float, int, dict[str, int]]:
+    rating_total = max(0.0, _safe_float(record.get("rating_total"), 0.0))
+    rating_count = max(0, _safe_int(record.get("rating_count"), 0))
+
+    ratings_by_user: dict[str, int] = {}
+    raw_ratings = record.get("ratings_by_user")
+    if isinstance(raw_ratings, dict):
+        for raw_uid, raw_score in raw_ratings.items():
+            uid = _normalize_user_id(raw_uid)
+            score = _normalize_score(raw_score)
+            if not uid or score is None:
+                continue
+            ratings_by_user[uid] = score
+
+    # 若历史数据只有 ratings_by_user，没有 total/count，则自动补齐。
+    if ratings_by_user and (rating_count <= 0 or rating_total <= 0):
+        rating_total = float(sum(ratings_by_user.values()))
+        rating_count = len(ratings_by_user)
+
+    if rating_count == 0:
+        rating_total = 0.0
+    return float(round(rating_total, 4)), rating_count, ratings_by_user
+
+
+def _rating_summary_from_entry(
+    entry: Optional[dict[str, Any]], user_id: Optional[str] = None
+) -> dict[str, Any]:
+    if not entry:
+        return {"avg_score": None, "rating_count": 0, "user_score": None}
+
+    rating_total = max(0.0, _safe_float(entry.get("rating_total"), 0.0))
+    rating_count = max(0, _safe_int(entry.get("rating_count"), 0))
+    avg_score = round(rating_total / rating_count, 2) if rating_count > 0 else None
+
+    user_score: Optional[int] = None
+    uid = _normalize_user_id(user_id)
+    if uid:
+        raw_user_ratings = entry.get("ratings_by_user")
+        if isinstance(raw_user_ratings, dict):
+            user_score = _normalize_score(raw_user_ratings.get(uid))
+
+    return {
+        "avg_score": avg_score,
+        "rating_count": rating_count,
+        "user_score": user_score,
+    }
+
+
 def _build_kb_state_from_records(
-    records: list[dict[str, str]],
-) -> tuple[dict[str, str], list[str], list[dict[str, str]], dict[str, int]]:
+    records: list[dict[str, Any]],
+) -> tuple[dict[str, str], list[str], list[dict[str, Any]], dict[str, int]]:
     mapping: dict[str, str] = {}
     keys: list[str] = []
-    entries: list[dict[str, str]] = []
+    entries: list[dict[str, Any]] = []
     index_map: dict[str, int] = {}
 
     for record in records:
         key_raw = str(record.get("key", "") or "").strip()
         val_raw = str(record.get("value", "") or "").strip()
         updated_at = str(record.get("updated_at", "") or "").strip()
+        rating_total, rating_count, ratings_by_user = _extract_rating_state(record)
 
         normalized_key = _normalize_kb_key(key_raw)
         if not normalized_key or not val_raw or val_raw == FALLBACK_TEXT:
@@ -246,6 +346,9 @@ def _build_kb_state_from_records(
             "key": key_raw,
             "value": val_raw,
             "updated_at": updated_at,
+            "rating_total": rating_total,
+            "rating_count": rating_count,
+            "ratings_by_user": ratings_by_user,
         }
         if normalized_key in index_map:
             existing_index = index_map[normalized_key]
@@ -322,7 +425,7 @@ def _load_kb_from_disk_unlocked() -> None:
             else:
                 raw_items = []
 
-            records: list[dict[str, str]] = []
+            records: list[dict[str, Any]] = []
             for item in raw_items:
                 if isinstance(item, dict):
                     records.append(item)
@@ -464,20 +567,127 @@ def _upsert_kb_entry(key: str, value: str) -> bool:
                     "key": clean_key,
                     "value": clean_value,
                     "updated_at": now_iso,
+                    "rating_total": 0.0,
+                    "rating_count": 0,
+                    "ratings_by_user": {},
                 }
             )
         else:
             existing_index = _kb_entry_index[normalized_key]
+            existing_entry = _kb_entries[existing_index]
+            rating_total, rating_count, ratings_by_user = _extract_rating_state(existing_entry)
             _kb_entries[existing_index] = {
                 "key": clean_key,
                 "value": clean_value,
                 "updated_at": now_iso,
+                "rating_total": rating_total,
+                "rating_count": rating_count,
+                "ratings_by_user": ratings_by_user,
             }
 
         _persist_kb_to_disk_unlocked()
 
     _kb_log(f"已写入知识库 key={clean_key!r}")
     return True
+
+
+def _get_rating_summary_by_normalized_key(
+    normalized_key: str, user_id: Optional[str] = None
+) -> dict[str, Any]:
+    if not normalized_key:
+        return {"avg_score": None, "rating_count": 0, "user_score": None}
+
+    _reload_kb_if_updated()
+    with _kb_lock:
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+        idx = _kb_entry_index.get(normalized_key)
+        if idx is None:
+            return {"avg_score": None, "rating_count": 0, "user_score": None}
+        entry = _kb_entries[idx]
+        return _rating_summary_from_entry(entry, user_id)
+
+
+def _resolve_existing_kb_key(kb_key_hint: Optional[str], barrage: str) -> str:
+    _reload_kb_if_updated()
+
+    hint = _normalize_kb_key(kb_key_hint)
+    if hint:
+        with _kb_lock:
+            if _kb_last_mtime is None:
+                _load_kb_from_disk_unlocked()
+            if hint in _kb_entry_index:
+                return hint
+
+    kb_hit = _find_from_kb(barrage)
+    if kb_hit:
+        matched = _normalize_kb_key(str(kb_hit.get("matched_key", "")))
+        if matched:
+            with _kb_lock:
+                if _kb_last_mtime is None:
+                    _load_kb_from_disk_unlocked()
+                if matched in _kb_entry_index:
+                    return matched
+
+    normalized_barrage = _normalize_kb_key(barrage)
+    if normalized_barrage:
+        with _kb_lock:
+            if _kb_last_mtime is None:
+                _load_kb_from_disk_unlocked()
+            if normalized_barrage in _kb_entry_index:
+                return normalized_barrage
+    return ""
+
+
+def _apply_meme_rating(normalized_key: str, user_id: str, score: int) -> dict[str, Any]:
+    if score not in VALID_RATING_SCORES:
+        raise HTTPException(status_code=400, detail="score 仅支持 2/4/6/8/10。")
+
+    uid = _normalize_user_id(user_id)
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id 不能为空。")
+
+    with _kb_lock:
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+
+        idx = _kb_entry_index.get(normalized_key)
+        if idx is None:
+            raise HTTPException(status_code=404, detail="该梗尚未入库，暂不可评分。")
+
+        entry = dict(_kb_entries[idx])
+        if str(entry.get("value", "")).strip() == FALLBACK_TEXT:
+            raise HTTPException(status_code=400, detail="兜底解释不支持评分。")
+
+        rating_total, rating_count, ratings_by_user = _extract_rating_state(entry)
+        previous_score = _normalize_score(ratings_by_user.get(uid))
+
+        if previous_score is None:
+            rating_total += score
+            rating_count += 1
+        else:
+            rating_total += score - previous_score
+
+        ratings_by_user[uid] = score
+        entry["rating_total"] = float(round(max(0.0, rating_total), 4))
+        entry["rating_count"] = max(0, rating_count)
+        entry["ratings_by_user"] = ratings_by_user
+        entry["updated_at"] = _now_utc().isoformat()
+
+        _kb_entries[idx] = entry
+        _persist_kb_to_disk_unlocked()
+        summary = _rating_summary_from_entry(entry, uid)
+
+    _kb_log(
+        f"评分已更新 key={entry.get('key')!r} uid={uid!r} score={score} "
+        f"avg={summary['avg_score']} count={summary['rating_count']}"
+    )
+    return {
+        "kb_key": normalized_key,
+        "avg_score": summary["avg_score"],
+        "rating_count": summary["rating_count"],
+        "user_score": score,
+    }
 
 
 def _get_openai_client(override_api_key: Optional[str] = None) -> OpenAI:
@@ -763,7 +973,7 @@ def _run_explain_pipeline(
     barrage: str,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
-) -> tuple[bool, str, str]:
+) -> tuple[bool, str, str, Optional[str]]:
     """
     梗解释主流程：
     1) 先走知识库（一级精确/前缀 + 二级模糊）
@@ -781,7 +991,7 @@ def _run_explain_pipeline(
             f"命中 {kb_hit['hit_level']} | input={barrage} | "
             f"matched={kb_hit['matched_key']} | score={kb_hit['score']}"
         )
-        return explanation != FALLBACK_TEXT, search_context, explanation
+        return explanation != FALLBACK_TEXT, search_context, explanation, str(kb_hit["matched_key"])
 
     search_text = _search_meme_context(barrage)
     explanation = _call_llm_for_explanation(
@@ -794,11 +1004,14 @@ def _run_explain_pipeline(
         stored = _upsert_kb_entry(barrage, explanation)
         if stored:
             _kb_log(f"已新增 key={barrage}")
+            kb_key = _normalize_kb_key(barrage)
         else:
             _kb_log(f"跳过写入（空 key/value 或兜底文案）key={barrage}")
+            kb_key = None
     else:
         _kb_log(f"跳过写入（LLM 返回兜底文案）key={barrage}")
-    return explanation != FALLBACK_TEXT, search_text, explanation
+        kb_key = None
+    return explanation != FALLBACK_TEXT, search_text, explanation, kb_key
 
 
 @app.get("/health")
@@ -818,19 +1031,30 @@ def danmaku_stream(payload: DanmakuStreamIn) -> DanmakuStreamOut:
 @app.post("/api/meme/explain", response_model=MemeExplainOut)
 def meme_explain(payload: MemeExplainIn) -> MemeExplainOut:
     _kb_log(f"/api/meme/explain 请求: barrage={payload.barrage!r}")
-    found, search_text, explanation = _run_explain_pipeline(
+    found, search_text, explanation, kb_key = _run_explain_pipeline(
         barrage=payload.barrage,
         api_key=payload.api_key,
         model=payload.model,
     )
     bot_broadcast = explanation
     print(f"机器人已向直播间广播：{bot_broadcast}")
+    rating_enabled = explanation != FALLBACK_TEXT and bool(kb_key)
+    rating_summary = (
+        _get_rating_summary_by_normalized_key(kb_key or "", payload.user_id)
+        if rating_enabled
+        else {"avg_score": None, "rating_count": 0, "user_score": None}
+    )
 
     return MemeExplainOut(
         found=found,
         search_context=search_text,
         explanation=explanation,
         bot_broadcast=bot_broadcast,
+        kb_key=kb_key,
+        avg_score=rating_summary["avg_score"],
+        rating_count=rating_summary["rating_count"],
+        user_score=rating_summary["user_score"],
+        rating_enabled=rating_enabled,
     )
 
 
@@ -847,10 +1071,27 @@ def meme_respond(payload: MemeRespondIn) -> MemeRespondOut:
     return MemeRespondOut(**suggestions)
 
 
+@app.post("/api/meme/rate", response_model=MemeRateOut)
+def meme_rate(payload: MemeRateIn) -> MemeRateOut:
+    if payload.score not in VALID_RATING_SCORES:
+        raise HTTPException(status_code=400, detail="score 仅支持 2/4/6/8/10。")
+
+    normalized_key = _resolve_existing_kb_key(payload.kb_key, payload.barrage)
+    if not normalized_key:
+        raise HTTPException(status_code=404, detail="该梗尚未入库，暂不可评分。")
+
+    result = _apply_meme_rating(
+        normalized_key=normalized_key,
+        user_id=payload.user_id,
+        score=payload.score,
+    )
+    return MemeRateOut(**result)
+
+
 @app.post("/api/test/quick", response_model=QuickTestOut)
 def quick_test(payload: QuickTestIn) -> QuickTestOut:
     """测试专用：直接输入梗文本（和可选 api_key）返回解释+回梗建议。"""
-    found, search_text, explanation = _run_explain_pipeline(
+    found, search_text, explanation, _kb_key = _run_explain_pipeline(
         barrage=payload.barrage,
         api_key=payload.api_key,
         model=payload.model,
