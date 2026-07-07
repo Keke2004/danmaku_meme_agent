@@ -1278,42 +1278,50 @@ function submitMessage(text, options = {}) {
   return true;
 }
 
-sendBtn.addEventListener("click", () => {
-  if (submitMessage(customInput.value)) {
-    customInput.value = "";
-    sidebarInput.value = "";
-    customInput.focus();
-  }
-});
+if (sendBtn && customInput && sidebarInput) {
+  sendBtn.addEventListener("click", () => {
+    if (submitMessage(customInput.value)) {
+      customInput.value = "";
+      sidebarInput.value = "";
+      customInput.focus();
+    }
+  });
+}
 
-sidebarSendBtn.addEventListener("click", () => {
-  if (submitMessage(sidebarInput.value || customInput.value)) {
-    customInput.value = "";
-    sidebarInput.value = "";
-    sidebarInput.focus();
-  }
-});
+if (sidebarSendBtn && sidebarInput) {
+  sidebarSendBtn.addEventListener("click", () => {
+    const fallbackText = customInput ? customInput.value : "";
+    if (submitMessage(sidebarInput.value || fallbackText)) {
+      if (customInput) customInput.value = "";
+      sidebarInput.value = "";
+      sidebarInput.focus();
+    }
+  });
+}
 
 [customInput, sidebarInput].forEach((input) => {
+  if (!input) return;
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       if (submitMessage(input.value)) {
-        customInput.value = "";
-        sidebarInput.value = "";
+        if (customInput) customInput.value = "";
+        if (sidebarInput) sidebarInput.value = "";
         input.focus();
       }
     }
   });
 });
 
-toggleBtn.addEventListener("click", () => {
-  isPaused = !isPaused;
-  toggleBtn.textContent = isPaused ? "继续飘屏" : "暂停飘屏";
-  document.querySelectorAll(".danmaku-item").forEach((node) => {
-    node.classList.toggle("is-paused", isPaused);
+if (toggleBtn) {
+  toggleBtn.addEventListener("click", () => {
+    isPaused = !isPaused;
+    toggleBtn.textContent = isPaused ? "继续飘屏" : "暂停飘屏";
+    document.querySelectorAll(".danmaku-item").forEach((node) => {
+      node.classList.toggle("is-paused", isPaused);
+    });
   });
-});
+}
 
 popoverExplainBtn.addEventListener("click", async (event) => {
   event.stopPropagation();

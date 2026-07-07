@@ -176,7 +176,7 @@ input {
   min-height: 0;
   padding: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   background: #11131d;
 }
 
@@ -463,6 +463,14 @@ input {
 
 .secondary-btn {
   background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.video-toolbar #toggle-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .chat-sidebar {
@@ -1532,10 +1540,6 @@ input {
 
   .send-image-btn {
     justify-self: end;
-  }
-
-  #toggle-btn {
-    grid-column: 1 / -1;
   }
 
   .danmaku-item {
