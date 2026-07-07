@@ -1118,9 +1118,12 @@ input {
   width: min(520px, calc(100% - 24px));
   border-radius: 22px;
   padding: 22px;
-  background: rgba(23, 25, 36, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: var(--shadow);
+  background: #ffffff;
+  border: 1px solid #e5ebf5;
+  box-shadow:
+    0 22px 48px rgba(15, 23, 42, 0.2),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+  color: #1f2937;
 }
 
 .explain-modal.is-morphing .explain-card {
@@ -1159,24 +1162,26 @@ input {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.05);
+  background: #f6f8fc;
+  border: 1px solid #e9eef6;
 }
 
 .quote-label {
   font-size: 12px;
-  color: #aebaf1;
+  color: #64748b;
 }
 
 .quote-box p {
   margin: 8px 0 0;
   font-size: 18px;
   font-weight: 700;
+  color: #0f172a;
 }
 
 .explain-desc {
   margin: 16px 0 0;
   line-height: 1.8;
-  color: #edf1fa;
+  color: #1f2937;
 }
 
 .note-badge {
@@ -1191,7 +1196,7 @@ input {
 
 .explain-note p {
   margin: 0;
-  color: #d9e3ff;
+  color: #334155;
   line-height: 1.7;
 }
 
@@ -1199,7 +1204,8 @@ input {
   margin-top: 14px;
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: #f8fafc;
+  border: 1px solid #e9eef6;
 }
 
 .suggestion-head {
@@ -1246,15 +1252,16 @@ input {
   min-height: 40px;
   padding: 0 12px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #eef2ff;
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #dbe3ee;
   text-align: left;
   font-size: 13px;
   font-weight: 600;
 }
 
 .suggestion-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: #f8fafc;
   transform: translateY(-1px);
 }
 
@@ -1278,7 +1285,7 @@ input {
 
 .modal-note {
   margin: 14px 0 0;
-  color: #dce7ff;
+  color: #475569;
   line-height: 1.6;
   font-size: 14px;
 }
@@ -1290,7 +1297,7 @@ input {
 .modal-status {
   margin: 8px 0 0;
   font-size: 12px;
-  color: #a8b6da;
+  color: #64748b;
 }
 
 .modal-status:empty {
@@ -1298,19 +1305,19 @@ input {
 }
 
 .modal-status[data-level=\"loading\"] {
-  color: #9fdcff;
+  color: #0ea5e9;
 }
 
 .modal-status[data-level=\"success\"] {
-  color: #9cffbf;
+  color: #16a34a;
 }
 
 .modal-status[data-level=\"warn\"] {
-  color: #ffd99a;
+  color: #d97706;
 }
 
 .modal-status[data-level=\"error\"] {
-  color: #ff9ca7;
+  color: #dc2626;
 }
 
 .explain-card-footer {
