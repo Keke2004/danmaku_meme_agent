@@ -7,7 +7,6 @@ const explainModal = document.getElementById("explain-modal");
 const modalCloseBtn = document.getElementById("modal-close-btn");
 const modalRefreshBtn = document.getElementById("modal-refresh-btn");
 const modalSourceText = document.getElementById("modal-source-text");
-const modalTitle = document.getElementById("explain-title");
 const modalDesc = document.getElementById("modal-desc");
 const modalNote = document.getElementById("modal-note");
 const modalStatus = document.getElementById("modal-status");
@@ -25,6 +24,8 @@ const heatPill = document.getElementById("heat-pill");
 const hotwordStatus = document.getElementById("hotword-status");
 const hotwordList = document.getElementById("hotword-list");
 const noticeBox = document.querySelector(".notice-box");
+const modalCard = explainModal.querySelector(".explain-card");
+const modalHeader = explainModal.querySelector(".explain-card-header");
 const popoverExplainIcon = popoverExplainBtn.querySelector(".popover-icon");
 const popoverExplainLabel = popoverExplainBtn.querySelector(".popover-label");
 const popoverCloseIcon = popoverCloseBtn.querySelector(".popover-close-icon");
@@ -167,6 +168,12 @@ let isRespondLoading = false;
 let isPopoverHiddenWhileThinking = false;
 let pendingRespondPlan = null;
 let modalMorphTimer = null;
+let isModalDragging = false;
+let modalDragPointerId = null;
+let modalDragStartX = 0;
+let modalDragStartY = 0;
+let modalDragOriginX = 0;
+let modalDragOriginY = 0;
 const MORPH_PREPARE_MS = 260;
 const MORPH_DURATION_MS = 700;
 
@@ -196,6 +203,72 @@ function randomFrom(list) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function parsePxValue(rawValue) {
+  const parsed = Number.parseFloat(String(rawValue || "").replace("px", ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function setModalDragOffset(x, y) {
+  explainModal.style.setProperty("--drag-x", `${x}px`);
+  explainModal.style.setProperty("--drag-y", `${y}px`);
+}
+
+function resetModalDragOffset() {
+  setModalDragOffset(0, 0);
+  if (modalCard) {
+    modalCard.classList.remove("is-dragging");
+  }
+  isModalDragging = false;
+  modalDragPointerId = null;
+}
+
+function startModalDrag(event) {
+  if (!modalCard || !modalHeader) return;
+  if (event.button !== 0) return;
+  if (event.target.closest("button")) return;
+
+  isModalDragging = true;
+  modalDragPointerId = event.pointerId;
+  modalDragStartX = event.clientX;
+  modalDragStartY = event.clientY;
+  modalDragOriginX = parsePxValue(explainModal.style.getPropertyValue("--drag-x"));
+  modalDragOriginY = parsePxValue(explainModal.style.getPropertyValue("--drag-y"));
+  modalCard.classList.add("is-dragging");
+  try {
+    modalHeader.setPointerCapture(event.pointerId);
+  } catch (_) {
+    // Pointer capture may fail on some browsers; dragging still works with window listeners.
+  }
+}
+
+function handleModalDragMove(event) {
+  if (!isModalDragging) return;
+  if (modalDragPointerId !== null && event.pointerId !== modalDragPointerId) return;
+
+  const nextX = modalDragOriginX + (event.clientX - modalDragStartX);
+  const nextY = modalDragOriginY + (event.clientY - modalDragStartY);
+  setModalDragOffset(nextX, nextY);
+}
+
+function stopModalDrag(event) {
+  if (!isModalDragging) return;
+  if (modalDragPointerId !== null && event.pointerId !== modalDragPointerId) return;
+
+  isModalDragging = false;
+  modalDragPointerId = null;
+  if (modalCard) {
+    modalCard.classList.remove("is-dragging");
+  }
+}
+
+function initModalDrag() {
+  if (!modalHeader || !modalCard) return;
+  modalHeader.addEventListener("pointerdown", startModalDrag);
+  window.addEventListener("pointermove", handleModalDragMove);
+  window.addEventListener("pointerup", stopModalDrag);
+  window.addEventListener("pointercancel", stopModalDrag);
 }
 
 function truncateHotwordText(text, maxChars = 10) {
@@ -362,6 +435,11 @@ function clearModalMorphState() {
   explainModal.style.removeProperty("--morph-translate-y");
   explainModal.style.removeProperty("--morph-scale-x");
   explainModal.style.removeProperty("--morph-scale-y");
+  if (modalCard) {
+    modalCard.classList.remove("is-dragging");
+  }
+  isModalDragging = false;
+  modalDragPointerId = null;
 }
 
 function hideModal() {
@@ -383,6 +461,7 @@ function clearSelection() {
   hideReadyBubble();
   hidePopover();
   hideModal();
+  resetModalDragOffset();
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
 }
@@ -571,7 +650,6 @@ async function syncDanmakuToBackend(content, username) {
 
 function showModalLoading(text) {
   modalSourceText.textContent = text;
-  modalTitle.textContent = "梗解释";
   modalDesc.textContent = "正在联网检索并生成解释，请稍候…";
   modalNote.textContent = "解释完成后，可点击“回梗”生成建议。";
   setModalStatus("状态：正在请求梗解释", "loading");
@@ -697,7 +775,6 @@ function prepareExplainModalResult({
   respondMode
 }) {
   modalSourceText.textContent = selectedText;
-  modalTitle.textContent = "梗解释";
   modalDesc.textContent = explanation;
   modalNote.textContent = String(note || "");
   setModalStatus(String(statusText || ""), statusLevel);
@@ -759,6 +836,7 @@ async function runExplainFlow(text) {
   cancelRespondFlow("已取消上一条回梗请求", { keepStatus: false });
   pendingRespondPlan = null;
   hideReadyBubble();
+  resetModalDragOffset();
 
   const reqId = ++activeExplainRequestId;
   const requestController = new AbortController();
@@ -993,6 +1071,7 @@ function startChatLoop() {
 function bootstrap() {
   syncViewerCount();
   getLaneMetrics();
+  initModalDrag();
   renderHotwords([], false);
   hideReadyBubble();
   resetSuggestionActions();

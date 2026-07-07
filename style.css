@@ -1151,13 +1151,14 @@ input {
 .explain-card {
   width: min(520px, calc(100% - 24px));
   border-radius: 22px;
-  padding: 22px;
+  padding: 18px 20px 16px;
   background: #ffffff;
   border: 1px solid #e5ebf5;
   box-shadow:
     0 22px 48px rgba(15, 23, 42, 0.2),
     0 2px 8px rgba(15, 23, 42, 0.08);
   color: #1f2937;
+  transform: translate(var(--drag-x, 0px), var(--drag-y, 0px));
 }
 
 .explain-modal.is-morphing .explain-card {
@@ -1173,7 +1174,10 @@ input {
 }
 
 .explain-modal.is-morph-start .explain-card {
-  transform: translate(var(--morph-translate-x, 0), var(--morph-translate-y, 0))
+  transform: translate(
+      calc(var(--morph-translate-x, 0px) + var(--drag-x, 0px)),
+      calc(var(--morph-translate-y, 0px) + var(--drag-y, 0px))
+    )
     scale(var(--morph-scale-x, 1), var(--morph-scale-y, 1));
   border-radius: 999px;
   opacity: 0.95;
@@ -1184,6 +1188,8 @@ input {
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
+  cursor: grab;
+  user-select: none;
 }
 
 .explain-card-header h3 {
@@ -1191,9 +1197,26 @@ input {
   font-size: 28px;
 }
 
+.explain-card-header .icon-btn {
+  cursor: pointer;
+}
+
+.explain-card.is-dragging .explain-card-header {
+  cursor: grabbing;
+}
+
+.explain-card .mini-label {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
 .quote-box,
 .explain-note {
-  margin-top: 16px;
+  margin-top: 10px;
   padding: 14px 16px;
   border-radius: 16px;
   background: #f6f8fc;
@@ -1213,8 +1236,8 @@ input {
 }
 
 .explain-desc {
-  margin: 16px 0 0;
-  line-height: 1.8;
+  margin: 10px 0 0;
+  line-height: 1.7;
   color: #1f2937;
 }
 
@@ -1235,7 +1258,7 @@ input {
 }
 
 .suggestions-box {
-  margin-top: 14px;
+  margin-top: 10px;
   padding: 14px 16px;
   border-radius: 16px;
   background: #f8fafc;
@@ -1318,7 +1341,7 @@ input {
 }
 
 .modal-note {
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   color: #475569;
   line-height: 1.6;
   font-size: 14px;
@@ -1329,7 +1352,7 @@ input {
 }
 
 .modal-status {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   font-size: 12px;
   color: #64748b;
 }
@@ -1355,7 +1378,7 @@ input {
 }
 
 .explain-card-footer {
-  margin-top: 18px;
+  margin-top: 12px;
   display: flex;
   justify-content: flex-end;
 }
