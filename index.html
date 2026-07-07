@@ -3,34 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>弹幕梗百科 Agent - 飘屏原型</title>
+    <title>弹幕梗百科 Agent</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="streamer">
-          <div class="avatar">梗</div>
-          <div>
-            <h1>弹幕梗百科直播间</h1>
-            <p>点击弹幕，会在附近弹出“梗解释”操作条</p>
-          </div>
+    <div class="live-shell">
+      <header class="live-header">
+        <div class="mac-dots">
+          <span></span><span></span><span></span>
         </div>
-        <div class="live-badge">
-          <span class="dot"></span>
-          LIVE
+
+        <div class="room-meta">
+          <button class="back-btn" type="button">‹</button>
+          <div class="host-avatar">梗</div>
+          <div class="host-info">
+            <h1>弹幕梗百科实验直播间</h1>
+            <p>点击飘屏弹幕，触发“梗解释”浮层</p>
+          </div>
+          <button class="follow-btn" type="button">关注</button>
+          <button class="ghost-btn" type="button">···</button>
+        </div>
+
+        <div class="header-side">
+          <div class="stat-pill">
+            <span>在线观众</span>
+            <strong id="viewer-count">14</strong>
+          </div>
+          <button class="ghost-btn" type="button">☰</button>
         </div>
       </header>
 
-      <main class="stage-layout">
-        <section class="player-panel">
-          <div class="player-frame" id="player-frame">
-            <div class="video-overlay"></div>
+      <main class="live-main">
+        <section class="video-column">
+          <div class="video-stage" id="player-frame">
+            <div class="video-bg"></div>
+            <div class="video-vignette"></div>
 
-            <div class="mock-content">
-              <span class="tag">直播片段</span>
+            <div class="video-copy">
+              <span class="scene-tag">Live Demo</span>
               <h2>这梗我好像懂了，但又没完全懂</h2>
-              <p>点一条弹幕试试，操作条会像直播间浮层一样贴着弹幕弹出来。</p>
+              <p>既有飘屏弹幕，也有右侧聊天；点击弹幕后可弹出“梗解释”。</p>
             </div>
 
             <div id="danmaku-stage" class="danmaku-stage" aria-label="直播间弹幕区域"></div>
@@ -47,67 +59,97 @@
             </div>
 
             <div id="explain-modal" class="explain-modal is-hidden" aria-hidden="true">
-              <div class="explain-card" role="dialog" aria-modal="false" aria-labelledby="explain-title">
+              <div class="explain-card" role="dialog" aria-labelledby="explain-title">
                 <div class="explain-card-header">
                   <div>
-                    <p class="eyebrow">Meme Explain</p>
-                    <h3 id="explain-title">梗解释加载中…</h3>
+                    <p class="mini-label">Meme Explain</p>
+                    <h3 id="explain-title">梗解释</h3>
                   </div>
-                  <button id="modal-close-btn" class="icon-btn" type="button" aria-label="关闭解释弹窗">×</button>
+                  <button id="modal-close-btn" class="icon-btn" type="button" aria-label="关闭">×</button>
                 </div>
 
-                <div class="explain-card-body">
-                  <div class="quote-box">
-                    <span class="quote-label">当前弹幕</span>
-                    <p id="modal-source-text">——</p>
-                  </div>
+                <div class="quote-box">
+                  <span class="quote-label">当前弹幕</span>
+                  <p id="modal-source-text">——</p>
+                </div>
 
-                  <p id="modal-desc" class="explain-desc">
-                    点击弹幕后，这里会展示这个梗的解释内容。
-                  </p>
+                <p id="modal-desc" class="explain-desc">点击弹幕后，这里会展示这条梗的解释。</p>
 
-                  <div class="explain-note">
-                    <span class="note-badge">AI Ready</span>
-                    <p id="modal-note">
-                      当前是前端 mock 内容，后续这里可以直接替换成 AI 返回的风趣解释。
-                    </p>
-                  </div>
+                <div class="explain-note">
+                  <span class="note-badge">AI Ready</span>
+                  <p id="modal-note">当前为 mock 解释，后续可替换成真实 AI 返回结果。</p>
                 </div>
 
                 <div class="explain-card-footer">
-                  <button id="modal-refresh-btn" type="button">换一种更会整活的解释</button>
+                  <button id="modal-refresh-btn" type="button">换一种解释</button>
                 </div>
               </div>
             </div>
 
-            <div class="player-caption">
-              <span>正在播放：</span>
-              <strong>《弹幕梗百科》测试房间</strong>
+            <div class="video-toolbar">
+              <div class="toolbar-left">
+                <span class="tool-chip active">弹</span>
+                <span class="tool-chip">礼</span>
+                <span class="tool-chip">互</span>
+                <span class="tool-chip">梗</span>
+              </div>
+              <div class="toolbar-right">
+                <span class="heat-pill">热度 100+</span>
+              </div>
             </div>
           </div>
 
-          <div class="input-bar">
+          <div class="composer-bar">
             <input
               id="custom-input"
               type="text"
-              placeholder="输入一条弹幕试试看，比如：这波在大气层"
               maxlength="40"
+              placeholder="输入一条消息 / 弹幕，比如：这波属实在大气层"
             />
-            <button id="send-btn">发送弹幕</button>
-            <button id="toggle-btn" class="secondary-btn">暂停飘屏</button>
-          </div>
-
-          <div class="tips-card">
-            <p class="eyebrow">Prototype</p>
-            <h2>当前交互</h2>
-            <ul>
-              <li>弹幕自动飘屏，支持手动发射</li>
-              <li>点击某条弹幕，会在它附近弹出操作条</li>
-              <li>点击“梗解释”，会打开一个解释弹窗</li>
-              <li>解释内容目前为 mock，后续可直接接 AI</li>
-            </ul>
+            <button id="send-btn" type="button">发送</button>
+            <button id="toggle-btn" class="secondary-btn" type="button">暂停飘屏</button>
           </div>
         </section>
+
+        <aside class="chat-sidebar">
+          <div class="sidebar-header">
+            <div>
+              <p class="mini-label">在线观众</p>
+              <h3>聊天室 · <span id="sidebar-viewer-count">14</span></h3>
+            </div>
+            <div class="header-badges">
+              <span class="filter-pill active">全部</span>
+              <span class="filter-pill">1000贡献</span>
+              <span class="filter-pill">高级用户</span>
+            </div>
+          </div>
+
+          <div class="ranking-card">
+            <div class="ranking-head">
+              <span>小时榜</span>
+              <strong>基础展馆 1/12</strong>
+            </div>
+            <ol class="ranking-list">
+              <li><span>1</span><em>质数.</em><b>33</b></li>
+              <li><span>2</span><em>高育良</em><b>2</b></li>
+              <li><span>3</span><em>用户HDD知识常乐的…</em><b>19</b></li>
+            </ol>
+          </div>
+
+          <div id="chat-list" class="chat-list" aria-label="聊天消息流"></div>
+
+          <div class="notice-box">
+            欢迎来到直播间！点击左侧飘过的弹幕，可以触发“梗解释”按钮；下一步可接入 AI 输出梗来源、语境与风趣解读。
+          </div>
+
+          <div class="chat-input-row">
+            <div class="chat-input-shell">
+              <span class="bullet-tag">弹</span>
+              <input id="sidebar-input" type="text" placeholder="与大家互动一下…" maxlength="40" />
+            </div>
+            <button id="sidebar-send-btn" class="send-icon-btn" type="button">↑</button>
+          </div>
+        </aside>
       </main>
     </div>
 
