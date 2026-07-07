@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>弹幕梗百科 Agent</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="live-shell">
+      <header class="live-header">
+        <div class="mac-dots">
+          <span></span><span></span><span></span>
+        </div>
+
+        <div class="room-meta">
+          <button class="back-btn" type="button">‹</button>
+          <div class="host-avatar">梗</div>
+          <div class="host-info">
+            <h1>梗小虎</h1>
+            <p>点击飘屏弹幕，触发“梗解释”浮层</p>
+          </div>
+          <button class="follow-btn" type="button">关注</button>
+          <button class="ghost-btn" type="button">···</button>
+        </div>
+
+        <div class="sidebar-topbar header-sidebar-topbar">
+          <div class="sidebar-viewers-pill">
+            <span class="viewer-icon">👥</span>
+            <span>在线观众</span>
+            <strong id="sidebar-viewer-count">14</strong>
+          </div>
+          <button class="sidebar-menu-btn" type="button" aria-label="侧边菜单">☰</button>
+        </div>
+      </header>
+
+      <main class="live-main">
+        <section class="video-column">
+          <div class="video-stage" id="player-frame">
+            <div class="video-bg"></div>
+            <div class="video-vignette"></div>
+
+            <div class="video-copy">
+              <span class="scene-tag">Live Demo</span>
+              <h2>这梗我好像懂了，但又没完全懂</h2>
+              <p>既有飘屏弹幕，也有右侧聊天；点击弹幕后可弹出“梗解释”。</p>
+            </div>
+
+            <div id="danmaku-stage" class="danmaku-stage" aria-label="直播间弹幕区域"></div>
+
+            <div id="danmaku-popover" class="danmaku-popover is-hidden" aria-hidden="true">
+              <button id="popover-explain-btn" class="popover-action" type="button">
+                <span class="popover-icon">✨</span>
+                <span>梗解释</span>
+              </button>
+              <button id="popover-close-btn" class="popover-action popover-action-secondary" type="button">
+                <span class="popover-icon">×</span>
+                <span>关闭</span>
+              </button>
+            </div>
+
+            <div id="explain-modal" class="explain-modal is-hidden" aria-hidden="true">
+              <div class="explain-card" role="dialog" aria-labelledby="explain-title">
+                <div class="explain-card-header">
+                  <div>
+                    <p class="mini-label">Meme Explain</p>
+                    <h3 id="explain-title">梗解释</h3>
+                  </div>
+                  <button id="modal-close-btn" class="icon-btn" type="button" aria-label="关闭">×</button>
+                </div>
+
+                <div class="quote-box">
+                  <span class="quote-label">当前弹幕</span>
+                  <p id="modal-source-text">——</p>
+                </div>
+
+                <p id="modal-desc" class="explain-desc">点击弹幕后，这里会展示这条梗的解释。</p>
+
+                <div class="suggestions-box">
+                  <span class="quote-label">主播回梗建议</span>
+                  <div id="suggestion-actions" class="suggestion-actions">
+                    <button type="button" class="suggestion-btn" disabled>等待生成建议</button>
+                  </div>
+                </div>
+
+                <p id="modal-note" class="modal-note">系统将自动请求梗解释与回梗建议。</p>
+                <p id="modal-status" class="modal-status">状态：待触发</p>
+
+                <div class="explain-card-footer">
+                  <button id="modal-refresh-btn" type="button">重新请求解释</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="video-toolbar">
+              <div class="toolbar-left">
+                <span class="tool-chip active">弹</span>
+                <span class="tool-chip">礼</span>
+                <span class="tool-chip">互</span>
+                <span class="tool-chip">梗</span>
+              </div>
+              <div class="toolbar-right">
+                <span id="heat-pill" class="heat-pill">热度待机</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer-bar">
+            <input
+              id="custom-input"
+              type="text"
+              maxlength="40"
+              placeholder="输入一条消息 / 弹幕，比如：这波属实在大气层"
+            />
+            <button id="send-btn" class="send-image-btn" type="button" aria-label="发送评论">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 18V7"></path>
+                <path d="M7 11.5 12 6l5 5.5"></path>
+              </svg>
+            </button>
+            <button id="toggle-btn" class="secondary-btn" type="button">暂停飘屏</button>
+          </div>
+        </section>
+
+        <aside class="chat-sidebar">
+          <div class="sidebar-header">
+            <div class="header-badges">
+              <span class="filter-pill active">全部</span>
+              <span class="filter-pill">1000贡献用户(0)</span>
+              <span class="filter-pill">高等级用户</span>
+            </div>
+          </div>
+
+          <div class="ranking-card">
+            <div class="ranking-head">
+              <span>在线观众榜</span>
+              <strong>本场活跃 TOP 3</strong>
+            </div>
+            <ol class="ranking-list">
+              <li>
+                <span class="rank-no">1</span>
+                <div class="rank-avatar rank-avatar-soft"></div>
+                <div class="rank-user">
+                  <em>我是猪</em>
+                  <div class="rank-badges">
+                    <span class="rank-badge rank-badge-purple">33</span>
+                    <span class="rank-badge rank-badge-orange">V 年</span>
+                    <span class="rank-badge rank-badge-gold">刚果王</span>
+                  </div>
+                </div>
+              </li>
+              <li>
+                <span class="rank-no">2</span>
+                <div class="rank-avatar rank-avatar-dark"></div>
+                <div class="rank-user">
+                  <em>Soren</em>
+                  <div class="rank-badges">
+                    <span class="rank-badge rank-badge-blue">18</span>
+                    <span class="rank-badge rank-badge-gold">8</span>
+                  </div>
+                </div>
+              </li>
+              <li>
+                <span class="rank-no">3</span>
+                <div class="rank-avatar rank-avatar-deep"></div>
+                <div class="rank-user">
+                  <em>旋律Slly（无畏契…）</em>
+                  <div class="rank-badges">
+                    <span class="rank-badge rank-badge-purple">22</span>
+                    <span class="rank-badge rank-badge-orange">V</span>
+                    <span class="rank-badge rank-badge-gold">4</span>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div class="hotword-card">
+            <div class="hotword-head">
+              <span>实时热词</span>
+              <strong id="hotword-status">等待弹幕数据…</strong>
+            </div>
+            <ul id="hotword-list" class="hotword-list">
+              <li class="hotword-empty">发送弹幕后，这里显示 Top 5 高频词</li>
+            </ul>
+          </div>
+
+          <div id="chat-list" class="chat-list" aria-label="聊天消息流"></div>
+
+          <div class="notice-box">
+            欢迎来到直播间！点击左侧飘过的弹幕，可以触发“梗解释”按钮；下一步可接入 AI 输出梗来源、语境与风趣解读。
+          </div>
+
+          <div class="chat-input-row">
+            <div class="chat-input-shell">
+              <span class="bullet-tag">弹</span>
+              <input id="sidebar-input" type="text" placeholder="与大家互动一下…" maxlength="40" />
+              <button class="chat-face-btn" type="button" aria-label="表情">☺</button>
+            </div>
+            <button id="sidebar-send-btn" class="send-icon-btn" type="button" aria-label="发送">↑</button>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
