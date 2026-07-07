@@ -8,11 +8,14 @@ Install dependencies:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from threading import Lock
 from typing import Any, Optional
 
 import requests
@@ -32,6 +35,10 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "tvly-dev-6ipPq9I83iMiL9MxnKfpPc1ng
 OPENAI_BASE_URL = "https://copilot.huya.info/api/openai/v1/"
 DEFAULT_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "openai/gpt-5-chat")
 DEFAULT_OPENAI_API_KEY = "sk-ZY3dCZmNa5mSe-LR2l0hXQ"
+KB_FILE_PATH = Path(__file__).with_name("meme_knowledge_base.json")
+KB_LEGACY_CSV_PATH = Path(__file__).with_name("meme_knowledge_base.csv")
+FUZZY_MATCH_THRESHOLD = float(os.getenv("MEME_FUZZY_THRESHOLD", "0.86"))
+MIN_FUZZY_KEY_LEN = 2
 
 app = FastAPI(title=APP_NAME)
 app.add_middleware(
@@ -41,6 +48,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def _log_startup_info() -> None:
+    _kb_log(f"当前知识库文件：{KB_FILE_PATH.resolve()}")
+
+
+def _kb_log(message: str) -> None:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[KB][{timestamp}] {message}", flush=True)
 
 
 class DanmakuStreamIn(BaseModel):
@@ -110,6 +127,15 @@ streamer_profiles: dict[str, str] = {
 }
 
 
+# 梗知识库：一级（精确/前缀）+ 二级（模糊）都基于内存结构。
+_kb_lock = Lock()
+_kb_exact: dict[str, str] = {}
+_kb_keys: list[str] = []
+_kb_entries: list[dict[str, str]] = []
+_kb_entry_index: dict[str, int] = {}
+_kb_last_mtime: Optional[float] = None
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -152,6 +178,306 @@ def _build_top_candidates(streamer_id: str) -> tuple[bool, list[dict[str, Any]]]
     top5 = [{"word": word, "count": cnt} for word, cnt in counter.most_common(5)]
     triggered = bool(top5 and top5[0]["count"] >= HOT_THRESHOLD)
     return triggered, top5
+
+
+def _normalize_kb_key(text: str) -> str:
+    normalized = str(text or "").strip().lower()
+    if not normalized:
+        return ""
+    compact = re.sub(r"\s+", "", normalized)
+    canonical = re.sub(r"[^\w\u4e00-\u9fff]+", "", compact)
+    if canonical:
+        return canonical[:120]
+    # 兼容“纯表情/符号梗”：若 canonical 为空，则回退到去空白后的原文。
+    return compact[:120]
+
+
+def _levenshtein_distance(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+
+    if len(a) < len(b):
+        a, b = b, a
+
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i]
+        for j, cb in enumerate(b, start=1):
+            insert_cost = current[j - 1] + 1
+            delete_cost = previous[j] + 1
+            replace_cost = previous[j - 1] + (0 if ca == cb else 1)
+            current.append(min(insert_cost, delete_cost, replace_cost))
+        previous = current
+    return previous[-1]
+
+
+def _similarity_ratio(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    max_len = max(len(a), len(b))
+    if max_len == 0:
+        return 0.0
+    distance = _levenshtein_distance(a, b)
+    return 1.0 - (distance / max_len)
+
+
+def _build_kb_state_from_records(
+    records: list[dict[str, str]],
+) -> tuple[dict[str, str], list[str], list[dict[str, str]], dict[str, int]]:
+    mapping: dict[str, str] = {}
+    keys: list[str] = []
+    entries: list[dict[str, str]] = []
+    index_map: dict[str, int] = {}
+
+    for record in records:
+        key_raw = str(record.get("key", "") or "").strip()
+        val_raw = str(record.get("value", "") or "").strip()
+        updated_at = str(record.get("updated_at", "") or "").strip()
+
+        normalized_key = _normalize_kb_key(key_raw)
+        if not normalized_key or not val_raw or val_raw == FALLBACK_TEXT:
+            continue
+
+        normalized_record = {
+            "key": key_raw,
+            "value": val_raw,
+            "updated_at": updated_at,
+        }
+        if normalized_key in index_map:
+            existing_index = index_map[normalized_key]
+            entries[existing_index] = normalized_record
+        else:
+            index_map[normalized_key] = len(entries)
+            entries.append(normalized_record)
+            keys.append(normalized_key)
+
+        mapping[normalized_key] = val_raw
+
+    return mapping, keys, entries, index_map
+
+
+def _read_legacy_csv_records() -> list[dict[str, str]]:
+    if not KB_LEGACY_CSV_PATH.exists():
+        return []
+
+    records: list[dict[str, str]] = []
+    with KB_LEGACY_CSV_PATH.open("r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.reader(fh)
+        for idx, row in enumerate(reader):
+            if not row or len(row) < 2:
+                continue
+            key_raw = str(row[0] or "").strip()
+            val_raw = str(row[1] or "").strip()
+            if idx == 0 and key_raw.lower() == "key" and val_raw.lower() == "value":
+                continue
+            updated_at = str(row[2] or "").strip() if len(row) >= 3 else ""
+            records.append(
+                {
+                    "key": key_raw,
+                    "value": val_raw,
+                    "updated_at": updated_at,
+                }
+            )
+    return records
+
+
+def _persist_kb_to_disk_unlocked() -> None:
+    global _kb_last_mtime
+
+    payload = {
+        "version": 1,
+        "updated_at": _now_utc().isoformat(),
+        "items": _kb_entries,
+    }
+
+    KB_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with KB_FILE_PATH.open("w", encoding="utf-8", newline="") as fh:
+        json.dump(payload, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+    try:
+        _kb_last_mtime = KB_FILE_PATH.stat().st_mtime
+    except FileNotFoundError:
+        _kb_last_mtime = -1.0
+
+
+def _load_kb_from_disk_unlocked() -> None:
+    global _kb_exact, _kb_keys, _kb_entries, _kb_entry_index, _kb_last_mtime
+
+    if KB_FILE_PATH.exists():
+        try:
+            with KB_FILE_PATH.open("r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+
+            if isinstance(payload, dict):
+                raw_items = payload.get("items", [])
+            elif isinstance(payload, list):
+                raw_items = payload
+            else:
+                raw_items = []
+
+            records: list[dict[str, str]] = []
+            for item in raw_items:
+                if isinstance(item, dict):
+                    records.append(item)
+
+            mapping, keys, entries, index_map = _build_kb_state_from_records(records)
+            _kb_exact = mapping
+            _kb_keys = keys
+            _kb_entries = entries
+            _kb_entry_index = index_map
+            try:
+                _kb_last_mtime = KB_FILE_PATH.stat().st_mtime
+            except FileNotFoundError:
+                _kb_last_mtime = -1.0
+            return
+        except Exception:
+            # JSON 读取异常时，尝试迁移旧 CSV；若也失败则保留旧缓存。
+            pass
+
+    if KB_LEGACY_CSV_PATH.exists():
+        try:
+            legacy_records = _read_legacy_csv_records()
+            mapping, keys, entries, index_map = _build_kb_state_from_records(legacy_records)
+            _kb_exact = mapping
+            _kb_keys = keys
+            _kb_entries = entries
+            _kb_entry_index = index_map
+            _persist_kb_to_disk_unlocked()
+            _kb_log(
+                f"已从旧 CSV 自动迁移到 JSON：{KB_LEGACY_CSV_PATH.name} -> {KB_FILE_PATH.name}"
+            )
+            return
+        except Exception:
+            return
+
+    _kb_exact = {}
+    _kb_keys = []
+    _kb_entries = []
+    _kb_entry_index = {}
+    _kb_last_mtime = -1.0
+
+
+def _reload_kb_if_updated() -> None:
+    with _kb_lock:
+        try:
+            mtime = KB_FILE_PATH.stat().st_mtime
+        except FileNotFoundError:
+            mtime = -1.0
+
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+            return
+        if mtime > (_kb_last_mtime or -1.0):
+            _load_kb_from_disk_unlocked()
+            return
+        if mtime < 0 and _kb_last_mtime >= 0:
+            _load_kb_from_disk_unlocked()
+
+
+def _find_from_kb(barrage: str) -> Optional[dict[str, Any]]:
+    normalized = _normalize_kb_key(barrage)
+    if not normalized:
+        return None
+
+    _reload_kb_if_updated()
+    with _kb_lock:
+        exact_map = dict(_kb_exact)
+        keys_snapshot = list(_kb_keys)
+
+    # 一级：精确命中（O(1)）
+    exact_value = exact_map.get(normalized)
+    if exact_value:
+        return {
+            "hit_level": "L1_EXACT",
+            "matched_key": normalized,
+            "score": 1.0,
+            "explanation": exact_value,
+        }
+
+    # 一级：前缀命中。通过“输入所有前缀 + 哈希查表”实现，单次查找仍为 O(1)。
+    for end in range(len(normalized), 1, -1):
+        prefix = normalized[:end]
+        prefix_value = exact_map.get(prefix)
+        if prefix_value:
+            return {
+                "hit_level": "L1_PREFIX",
+                "matched_key": prefix,
+                "score": 1.0,
+                "explanation": prefix_value,
+            }
+
+    # 二级：模糊命中，容错错别字/漏字。
+    if len(normalized) < MIN_FUZZY_KEY_LEN or not keys_snapshot:
+        return None
+
+    best_key = ""
+    best_score = 0.0
+    text_len = len(normalized)
+    for key in keys_snapshot:
+        # 长度差过大直接跳过，减少不必要计算。
+        if abs(len(key) - text_len) > max(2, int(max(len(key), text_len) * 0.45)):
+            continue
+        score = _similarity_ratio(normalized, key)
+        if score > best_score:
+            best_key = key
+            best_score = score
+
+    if best_key and best_score >= FUZZY_MATCH_THRESHOLD:
+        return {
+            "hit_level": "L2_FUZZY",
+            "matched_key": best_key,
+            "score": round(best_score, 4),
+            "explanation": exact_map[best_key],
+        }
+    return None
+
+
+def _upsert_kb_entry(key: str, value: str) -> bool:
+    global _kb_last_mtime
+
+    clean_key = str(key or "").strip()
+    clean_value = str(value or "").strip()
+    normalized_key = _normalize_kb_key(clean_key)
+    if not normalized_key or not clean_value or clean_value == FALLBACK_TEXT:
+        if not normalized_key:
+            _kb_log(f"跳过写入（key 归一化为空）raw_key={clean_key!r}")
+        return False
+
+    now_iso = _now_utc().isoformat()
+    with _kb_lock:
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+
+        _kb_exact[normalized_key] = clean_value
+        if normalized_key not in _kb_keys:
+            _kb_keys.append(normalized_key)
+            _kb_entry_index[normalized_key] = len(_kb_entries)
+            _kb_entries.append(
+                {
+                    "key": clean_key,
+                    "value": clean_value,
+                    "updated_at": now_iso,
+                }
+            )
+        else:
+            existing_index = _kb_entry_index[normalized_key]
+            _kb_entries[existing_index] = {
+                "key": clean_key,
+                "value": clean_value,
+                "updated_at": now_iso,
+            }
+
+        _persist_kb_to_disk_unlocked()
+
+    _kb_log(f"已写入知识库 key={clean_key!r}")
+    return True
 
 
 def _get_openai_client(override_api_key: Optional[str] = None) -> OpenAI:
@@ -370,7 +696,9 @@ def _call_llm_for_explanation(
     content = (resp.choices[0].message.content or "").strip()
     if not content:
         return FALLBACK_TEXT
-    if FALLBACK_TEXT in content:
+    compact_content = re.sub(r"\s+", "", content)
+    compact_fallback = re.sub(r"\s+", "", FALLBACK_TEXT)
+    if compact_content == compact_fallback:
         return FALLBACK_TEXT
     return content[:80]
 
@@ -431,6 +759,48 @@ def _call_llm_for_responses(
     return result
 
 
+def _run_explain_pipeline(
+    barrage: str,
+    api_key: Optional[str] = None,
+    model: Optional[str] = None,
+) -> tuple[bool, str, str]:
+    """
+    梗解释主流程：
+    1) 先走知识库（一级精确/前缀 + 二级模糊）
+    2) 命中则直接返回，不走检索+LLM
+    3) 未命中则走检索+LLM，且把有效结果回写知识库
+    """
+    kb_hit = _find_from_kb(barrage)
+    if kb_hit:
+        search_context = (
+            f"知识库命中：{kb_hit['hit_level']} | key={kb_hit['matched_key']} | "
+            f"score={kb_hit['score']}"
+        )
+        explanation = str(kb_hit["explanation"]).strip() or FALLBACK_TEXT
+        _kb_log(
+            f"命中 {kb_hit['hit_level']} | input={barrage} | "
+            f"matched={kb_hit['matched_key']} | score={kb_hit['score']}"
+        )
+        return explanation != FALLBACK_TEXT, search_context, explanation
+
+    search_text = _search_meme_context(barrage)
+    explanation = _call_llm_for_explanation(
+        barrage=barrage,
+        search_text=search_text,
+        api_key=api_key,
+        model=model,
+    )
+    if explanation != FALLBACK_TEXT:
+        stored = _upsert_kb_entry(barrage, explanation)
+        if stored:
+            _kb_log(f"已新增 key={barrage}")
+        else:
+            _kb_log(f"跳过写入（空 key/value 或兜底文案）key={barrage}")
+    else:
+        _kb_log(f"跳过写入（LLM 返回兜底文案）key={barrage}")
+    return explanation != FALLBACK_TEXT, search_text, explanation
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "app": APP_NAME}
@@ -447,15 +817,12 @@ def danmaku_stream(payload: DanmakuStreamIn) -> DanmakuStreamOut:
 
 @app.post("/api/meme/explain", response_model=MemeExplainOut)
 def meme_explain(payload: MemeExplainIn) -> MemeExplainOut:
-    search_text = _search_meme_context(payload.barrage)
-    explanation = _call_llm_for_explanation(
-        payload.barrage,
-        search_text,
+    _kb_log(f"/api/meme/explain 请求: barrage={payload.barrage!r}")
+    found, search_text, explanation = _run_explain_pipeline(
+        barrage=payload.barrage,
         api_key=payload.api_key,
         model=payload.model,
     )
-
-    found = explanation != FALLBACK_TEXT
     bot_broadcast = explanation
     print(f"机器人已向直播间广播：{bot_broadcast}")
 
@@ -483,14 +850,11 @@ def meme_respond(payload: MemeRespondIn) -> MemeRespondOut:
 @app.post("/api/test/quick", response_model=QuickTestOut)
 def quick_test(payload: QuickTestIn) -> QuickTestOut:
     """测试专用：直接输入梗文本（和可选 api_key）返回解释+回梗建议。"""
-    search_text = _search_meme_context(payload.barrage)
-    explanation = _call_llm_for_explanation(
+    found, search_text, explanation = _run_explain_pipeline(
         barrage=payload.barrage,
-        search_text=search_text,
         api_key=payload.api_key,
         model=payload.model,
     )
-    found = explanation != FALLBACK_TEXT
     bot_broadcast = explanation
     print(f"机器人已向直播间广播：{bot_broadcast}")
 

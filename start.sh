@@ -14,6 +14,7 @@ if [[ ! -d "$VENV_PATH" ]]; then
 fi
 
 source "$VENV_PATH/bin/activate"
+cd "$ROOT_DIR"
 
 if [[ "${1:-}" == "cli" ]]; then
   echo "进入 CLI 测试模式..."
@@ -35,7 +36,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "启动后端: http://$BACKEND_HOST:$BACKEND_PORT"
-uvicorn main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload &
+uvicorn main:app --app-dir "$ROOT_DIR" --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload --reload-dir "$ROOT_DIR" &
 BACKEND_PID=$!
 
 echo "启动前端静态服务: http://$BACKEND_HOST:$FRONTEND_PORT/index.html"
@@ -50,5 +51,3 @@ echo
 echo "按 Ctrl+C 可一键停止前后端。"
 
 wait
-
-‘’‘http://127.0.0.1:5500/index.html’‘’

@@ -39,13 +39,17 @@
         <section class="video-column">
           <div class="video-stage" id="player-frame">
             <div class="video-bg"></div>
+            <video
+              class="live-video"
+              src="./danking.mp4"
+              autoplay
+              loop
+              muted
+              playsinline
+              preload="auto"
+              aria-label="直播视频画面"
+            ></video>
             <div class="video-vignette"></div>
-
-            <div class="video-copy">
-              <span class="scene-tag">Live Demo</span>
-              <h2>这梗我好像懂了，但又没完全懂</h2>
-              <p>既有飘屏弹幕，也有右侧聊天；点击弹幕后可弹出“梗解释”。</p>
-            </div>
 
             <div id="danmaku-stage" class="danmaku-stage" aria-label="直播间弹幕区域"></div>
 
@@ -100,16 +104,17 @@
               </div>
             </div>
 
-            <div class="video-toolbar">
-              <div class="toolbar-left">
-                <span class="tool-chip active">弹</span>
-                <span class="tool-chip">礼</span>
-                <span class="tool-chip">互</span>
-                <span class="tool-chip">梗</span>
-              </div>
-              <div class="toolbar-right">
-                <span id="heat-pill" class="heat-pill">热度待机</span>
-              </div>
+          </div>
+
+          <div class="video-toolbar">
+            <div class="toolbar-left">
+              <span class="tool-chip active">弹</span>
+              <span class="tool-chip">礼</span>
+              <span class="tool-chip">互</span>
+              <span class="tool-chip">梗</span>
+            </div>
+            <div class="toolbar-right">
+              <span id="heat-pill" class="heat-pill">热度待机</span>
             </div>
           </div>
 

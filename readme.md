@@ -17,10 +17,38 @@
 - 接口：`POST /api/meme/explain`
 - 输入：`streamer_id`、`barrage`，可选 `api_key`、`model`
 - 功能：
-  - 使用 Tavily API（`https://api.tavily.com/search`）检索并提取结果摘要，形成 `search_context`
+  - 先进行知识库两级匹配（见 1.6）
+  - 若知识库命中，直接返回解释，跳过联网检索与 LLM
+  - 若知识库未命中，再使用 Tavily API（`https://api.tavily.com/search`）检索并提取结果摘要，形成 `search_context`
   - 将检索内容送入 LLM 生成梗解释
+  - 若 LLM 返回有效解释（非固定兜底文案），自动回写知识库
   - 返回机器人广播文案并打印日志：`机器人已向直播间广播：xxx`
 - 输出：`found`、`search_context`、`explanation`、`bot_broadcast`
+
+### 1.6 知识库匹配（新增）
+- 存储文件：`meme_knowledge_base.json`（与 `main.py` 同目录）
+- 生效流程：每次 `meme/explain` 会先匹配知识库，再决定是否走搜索+LLM
+
+两级匹配策略：
+1. 一级缓存（精确/前缀）
+- 使用内存哈希表（Dictionary）
+- 精确命中：`O(1)` 查找
+- 前缀命中：对输入生成前缀并进行哈希查表
+
+2. 二级模糊（Fuzzy）
+- 使用 Levenshtein 编辑距离计算相似度
+- 默认阈值：`0.86`（可通过环境变量 `MEME_FUZZY_THRESHOLD` 调整）
+- 用于容错错别字、漏字（如“肉蛋葱鸡”/“肉蛋葱机”）
+
+自动回写规则：
+- 当知识库未命中并走了搜索+LLM后：
+  - 若 LLM 返回不是 `梗小虎还没学会这个梗，正在努力修行中……`，则写入知识库
+  - 写入格式：JSON `items` 数组中的对象，字段含 `key`、`value`、`updated_at`
+- 若返回固定兜底文案，不写入知识库
+
+兼容说明：
+- 若历史存在 `meme_knowledge_base.csv`，服务会在首次读取知识库时自动迁移到 `meme_knowledge_base.json`
+- 迁移完成后，后续新增与更新只写入 JSON 文件
 
 ### 1.3 主播回梗建议
 - 接口：`POST /api/meme/respond`

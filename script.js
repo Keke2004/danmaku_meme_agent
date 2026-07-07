@@ -908,7 +908,7 @@ function createDanmaku(text, source = "自动弹幕", options = {}) {
   const { stageHeight, rowHeight } = getLaneMetrics();
   const lane = pickLane();
   const top = Math.max(16, lane * rowHeight + 24);
-  const duration = Number((7.5 + Math.random() * 5).toFixed(2));
+  const duration = Number((15 + Math.random() * 5).toFixed(2));
   laneCooldowns[lane] = Date.now() + Math.max(900, duration * 210);
 
   const node = document.createElement("button");
@@ -956,7 +956,7 @@ function startDanmakuLoop() {
   loopTimer = window.setInterval(() => {
     if (isPaused) return;
     createDanmaku(randomFrom(seedDanmaku));
-  }, 760);
+  }, 900);
 }
 
 function startChatLoop() {

@@ -176,7 +176,7 @@ input {
   min-height: 0;
   padding: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   background: #11131d;
 }
 
@@ -186,6 +186,18 @@ input {
   height: 100%;
   overflow: hidden;
   background: #171925;
+}
+
+.live-video {
+  position: absolute;
+  inset: 4% 5%;
+  width: 90%;
+  height: 92%;
+  object-fit: cover;
+  border-radius: 16px;
+  z-index: 0;
+  pointer-events: none;
+  background: #000;
 }
 
 .video-bg,
@@ -326,19 +338,15 @@ input {
 }
 
 .video-toolbar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 3;
-  height: 98px;
-  padding: 16px 22px;
+  position: relative;
+  z-index: 1;
+  min-height: 64px;
+  padding: 10px 16px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  background:
-    linear-gradient(180deg, transparent, rgba(10, 11, 17, 0.3) 28%, rgba(10, 11, 17, 0.82)),
-    linear-gradient(0deg, rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0.32));
+  border-top: 1px solid var(--line);
+  background: #171925;
 }
 
 .toolbar-left,
@@ -1544,8 +1552,8 @@ body {
 
 .video-vignette {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 20%, transparent 76%, rgba(20, 24, 35, 0.12)),
-    linear-gradient(90deg, rgba(20, 24, 35, 0.08), transparent 16%, transparent 84%, rgba(20, 24, 35, 0.08));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 24%, transparent 100%),
+    linear-gradient(90deg, rgba(20, 24, 35, 0.04), transparent 16%, transparent 84%, rgba(20, 24, 35, 0.04));
 }
 
 .scene-tag,
@@ -1566,9 +1574,8 @@ body {
 }
 
 .video-toolbar {
-  background:
-    linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.42) 30%, rgba(255, 255, 255, 0.92)),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.65));
+  background: #ffffff;
+  border-top: 1px solid #e9eef5;
 }
 
 .tool-chip {
