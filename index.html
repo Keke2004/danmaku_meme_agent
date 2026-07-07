@@ -15,6 +15,7 @@
 
         <div class="room-meta">
           <button class="back-btn" type="button">‹</button>
+          <img class="huya-logo" src="./logo2.png" alt="虎牙直播 Logo" />
           <div class="host-avatar">梗</div>
           <div class="host-info">
             <h1>梗小虎</h1>
@@ -51,13 +52,17 @@
             <div id="danmaku-popover" class="danmaku-popover is-hidden" aria-hidden="true">
               <button id="popover-explain-btn" class="popover-action" type="button">
                 <span class="popover-icon">✨</span>
-                <span>梗解释</span>
+                <span class="popover-label">梗解释</span>
               </button>
               <button id="popover-close-btn" class="popover-action popover-action-secondary" type="button">
-                <span class="popover-icon">×</span>
-                <span>关闭</span>
+                <span class="popover-icon popover-close-icon">×</span>
+                <span class="popover-close-label">关闭</span>
               </button>
             </div>
+
+            <button id="explain-ready-bubble" class="explain-ready-bubble is-hidden" type="button">
+              梗解释已就绪，点击查看
+            </button>
 
             <div id="explain-modal" class="explain-modal is-hidden" aria-hidden="true">
               <div class="explain-card" role="dialog" aria-labelledby="explain-title">
@@ -77,13 +82,16 @@
                 <p id="modal-desc" class="explain-desc">点击弹幕后，这里会展示这条梗的解释。</p>
 
                 <div class="suggestions-box">
-                  <span class="quote-label">主播回梗建议</span>
+                  <div class="suggestion-head">
+                    <span class="quote-label">主播回梗建议</span>
+                    <button id="respond-trigger-btn" class="respond-trigger-btn" type="button">回梗</button>
+                  </div>
                   <div id="suggestion-actions" class="suggestion-actions">
-                    <button type="button" class="suggestion-btn" disabled>等待生成建议</button>
+                    <button type="button" class="suggestion-btn" disabled>解释完成后，点击“回梗”获取建议</button>
                   </div>
                 </div>
 
-                <p id="modal-note" class="modal-note">系统将自动请求梗解释与回梗建议。</p>
+                <p id="modal-note" class="modal-note">系统将先请求梗解释；回梗建议需点击“回梗”按钮。</p>
                 <p id="modal-status" class="modal-status">状态：待触发</p>
 
                 <div class="explain-card-footer">
@@ -126,7 +134,7 @@
           <div class="sidebar-header">
             <div class="header-badges">
               <span class="filter-pill active">全部</span>
-              <span class="filter-pill">1000贡献用户(0)</span>
+              <span class="filter-pill">1000贡献用户</span>
               <span class="filter-pill">高等级用户</span>
             </div>
           </div>

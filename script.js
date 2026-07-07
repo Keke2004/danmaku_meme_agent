@@ -12,6 +12,8 @@ const modalDesc = document.getElementById("modal-desc");
 const modalNote = document.getElementById("modal-note");
 const modalStatus = document.getElementById("modal-status");
 const suggestionActions = document.getElementById("suggestion-actions");
+const respondTriggerBtn = document.getElementById("respond-trigger-btn");
+const explainReadyBubble = document.getElementById("explain-ready-bubble");
 const customInput = document.getElementById("custom-input");
 const sidebarInput = document.getElementById("sidebar-input");
 const sendBtn = document.getElementById("send-btn");
@@ -23,6 +25,10 @@ const heatPill = document.getElementById("heat-pill");
 const hotwordStatus = document.getElementById("hotword-status");
 const hotwordList = document.getElementById("hotword-list");
 const noticeBox = document.querySelector(".notice-box");
+const popoverExplainIcon = popoverExplainBtn.querySelector(".popover-icon");
+const popoverExplainLabel = popoverExplainBtn.querySelector(".popover-label");
+const popoverCloseIcon = popoverCloseBtn.querySelector(".popover-close-icon");
+const popoverCloseLabel = popoverCloseBtn.querySelector(".popover-close-label");
 
 const APP_CONFIG = Object.freeze({
   apiBase: window.DANMAKU_API_BASE || "http://127.0.0.1:8000",
@@ -155,6 +161,14 @@ let laneCount = 8;
 let currentViewers = 14;
 let lastAiExplainAt = 0;
 let activeExplainRequestId = 0;
+let activeExplainAbortController = null;
+let activeRespondAbortController = null;
+let isRespondLoading = false;
+let isPopoverHiddenWhileThinking = false;
+let pendingRespondPlan = null;
+let modalMorphTimer = null;
+const MORPH_PREPARE_MS = 260;
+const MORPH_DURATION_MS = 700;
 
 function getLaneMetrics() {
   const stageHeight = danmakuStage.clientHeight || 520;
@@ -257,23 +271,112 @@ function setModalStatus(text, level = "info") {
   modalStatus.dataset.level = level;
 }
 
+function sleepMs(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function hideReadyBubble() {
+  explainReadyBubble.classList.add("is-hidden");
+}
+
+function showReadyBubble(text) {
+  const compactText = String(text || "").slice(0, 14);
+  explainReadyBubble.textContent = compactText
+    ? `梗解释已就绪：${compactText}`
+    : "梗解释已就绪，点击查看";
+  explainReadyBubble.classList.remove("is-hidden");
+}
+
+function setPopoverCloseMode(mode = "close") {
+  if (mode === "hide") {
+    if (popoverCloseIcon) popoverCloseIcon.textContent = "−";
+    if (popoverCloseLabel) popoverCloseLabel.textContent = "隐藏";
+    popoverCloseBtn.title = "隐藏思考按钮，不中断请求";
+    return;
+  }
+
+  if (popoverCloseIcon) popoverCloseIcon.textContent = "×";
+  if (popoverCloseLabel) popoverCloseLabel.textContent = "关闭";
+  popoverCloseBtn.title = "";
+}
+
+function setPopoverExplainState(state = "idle") {
+  danmakuPopover.classList.remove("is-thinking", "is-expanded");
+  popoverExplainBtn.classList.remove("is-thinking");
+  setPopoverCloseMode("close");
+
+  if (state === "thinking") {
+    danmakuPopover.classList.add("is-thinking");
+    popoverExplainBtn.classList.add("is-thinking");
+    if (popoverExplainIcon) popoverExplainIcon.textContent = "⏳";
+    if (popoverExplainLabel) popoverExplainLabel.textContent = "梗小虎正在思考中";
+    popoverExplainBtn.title = "再次点击可取消梗解释";
+    setPopoverCloseMode("hide");
+    return;
+  }
+
+  if (state === "expanded") {
+    danmakuPopover.classList.add("is-expanded");
+    if (popoverExplainIcon) popoverExplainIcon.textContent = "✓";
+    if (popoverExplainLabel) popoverExplainLabel.textContent = "梗解释已完成";
+    popoverExplainBtn.title = "";
+    return;
+  }
+
+  if (popoverExplainIcon) popoverExplainIcon.textContent = "✨";
+  if (popoverExplainLabel) popoverExplainLabel.textContent = "梗解释";
+  popoverExplainBtn.title = "";
+}
+
+function setRespondButtonState({ disabled = true, loading = false, label = "回梗" } = {}) {
+  respondTriggerBtn.disabled = disabled;
+  respondTriggerBtn.textContent = label;
+  respondTriggerBtn.classList.toggle("is-loading", loading);
+}
+
+function resetSuggestionActions(message = "解释完成后，点击“回梗”获取建议") {
+  suggestionActions.innerHTML = `<button type="button" class="suggestion-btn" disabled>${message}</button>`;
+}
+
 function hidePopover() {
   danmakuPopover.classList.add("is-hidden");
   danmakuPopover.setAttribute("aria-hidden", "true");
 }
 
+function clearModalMorphState() {
+  if (modalMorphTimer) {
+    window.clearTimeout(modalMorphTimer);
+    modalMorphTimer = null;
+  }
+
+  explainModal.classList.remove("is-morphing", "is-morph-start");
+  explainModal.style.removeProperty("--morph-translate-x");
+  explainModal.style.removeProperty("--morph-translate-y");
+  explainModal.style.removeProperty("--morph-scale-x");
+  explainModal.style.removeProperty("--morph-scale-y");
+}
+
 function hideModal() {
+  clearModalMorphState();
   explainModal.classList.add("is-hidden");
   explainModal.setAttribute("aria-hidden", "true");
 }
 
 function clearSelection() {
+  cancelExplainFlow("已取消本次梗解释", { keepPopover: false });
+  cancelRespondFlow("已取消本次回梗", { keepStatus: false });
+
   if (selectedNode) {
-    selectedNode.classList.remove("is-selected", "is-frozen");
+    selectedNode.classList.remove("is-selected", "is-frozen", "hotword-item--active");
   }
+  isPopoverHiddenWhileThinking = false;
+  pendingRespondPlan = null;
   selectedNode = null;
+  hideReadyBubble();
   hidePopover();
   hideModal();
+  resetSuggestionActions();
+  setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
 }
 
 function showPopoverNear(node) {
@@ -330,19 +433,54 @@ function renderHotwords(topCandidates = [], triggered = false) {
   topCandidates.slice(0, 5).forEach((item, idx) => {
     const li = document.createElement("li");
     li.className = "hotword-item";
+    li.dataset.text = item.word;
+    li.setAttribute("role", "button");
+    li.setAttribute("tabindex", "0");
+    li.setAttribute("aria-label", `点击解释热词 ${item.word}`);
+    li.title = `点击解释：${item.word}`;
     li.innerHTML = `
       <span class="hotword-rank">${idx + 1}</span>
       <span class="hotword-word">${item.word}</span>
       <strong class="hotword-count">${item.count}</strong>
     `;
+
+    li.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectHotword(li);
+    });
+
+    li.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectHotword(li);
+      }
+    });
+
     hotwordList.appendChild(li);
   });
 }
 
 async function requestJson(path, payload, options = {}) {
   const timeoutMs = Number(options.timeoutMs || REQUEST_TIMEOUT_MS);
+  const externalSignal = options.signal || null;
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  let abortedByTimeout = false;
+  let detachExternalAbort = null;
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      const onExternalAbort = () => controller.abort();
+      externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+      detachExternalAbort = () => externalSignal.removeEventListener("abort", onExternalAbort);
+    }
+  }
+
+  const timer = window.setTimeout(() => {
+    abortedByTimeout = true;
+    controller.abort();
+  }, timeoutMs);
 
   try {
     let response;
@@ -355,6 +493,9 @@ async function requestJson(path, payload, options = {}) {
       });
     } catch (error) {
       if (error && error.name === "AbortError") {
+        if (externalSignal?.aborted && !abortedByTimeout) {
+          throw new Error("请求已取消");
+        }
         throw new Error(`请求超时（>${Math.round(timeoutMs / 1000)}秒）`);
       }
       throw error;
@@ -368,6 +509,7 @@ async function requestJson(path, payload, options = {}) {
     return data;
   } finally {
     window.clearTimeout(timer);
+    if (detachExternalAbort) detachExternalAbort();
   }
 }
 
@@ -378,7 +520,7 @@ async function checkBackendHealth() {
   try {
     const response = await fetch(resolveApiUrl("/health"), { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    updateNotice("后端已连接：点击弹幕即可获得真实梗解释与回梗建议。", "success");
+    updateNotice("点击弹幕即可获得真实梗解释与回梗建议。", "success");
     setModalStatus("状态：后端在线", "success");
   } catch (error) {
     updateNotice("后端暂未连通，当前可继续体验弹幕；点击梗解释会使用本地兜底。", "warn");
@@ -409,12 +551,16 @@ function showModalLoading(text) {
   modalSourceText.textContent = text;
   modalTitle.textContent = "梗解释";
   modalDesc.textContent = "正在联网检索并生成解释，请稍候…";
-  modalNote.textContent = "系统将继续请求回梗建议。";
-  setModalStatus("状态：正在请求 /api/meme/explain", "loading");
-  suggestionActions.innerHTML = '<button type="button" class="suggestion-btn" disabled>建议生成中…</button>';
+  modalNote.textContent = "解释完成后，可点击“回梗”生成建议。";
+  setModalStatus("状态：正在请求梗解释", "loading");
+  resetSuggestionActions("解释完成后，点击“回梗”获取建议");
+  setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
+}
 
+function showModalWithCurrentContent() {
   explainModal.classList.remove("is-hidden");
   explainModal.setAttribute("aria-hidden", "false");
+  hideReadyBubble();
 }
 
 function buildAiDanmakuExplain(text) {
@@ -484,16 +630,125 @@ function renderSuggestionActions(sourceText, suggestions, isFallback = false) {
   });
 }
 
+function cancelExplainFlow(reason = "已取消本次梗解释", options = {}) {
+  const { keepPopover = false, keepStatus = true } = options;
+  if (!isExplainLoading) return false;
+
+  activeExplainRequestId += 1;
+  if (activeExplainAbortController && !activeExplainAbortController.signal.aborted) {
+    activeExplainAbortController.abort();
+  }
+
+  activeExplainAbortController = null;
+  isExplainLoading = false;
+  isPopoverHiddenWhileThinking = false;
+  setPopoverExplainState("idle");
+  if (keepStatus) setModalStatus(`状态：${reason}`, "warn");
+  if (!keepPopover) hidePopover();
+
+  return true;
+}
+
+function cancelRespondFlow(reason = "已取消本次回梗", options = {}) {
+  const { keepStatus = true } = options;
+  if (activeRespondAbortController && !activeRespondAbortController.signal.aborted) {
+    activeRespondAbortController.abort();
+  }
+  activeRespondAbortController = null;
+  isRespondLoading = false;
+  if (keepStatus) setModalStatus(`状态：${reason}`, "warn");
+}
+
+function hideThinkingPopover() {
+  if (!isExplainLoading) return;
+  isPopoverHiddenWhileThinking = true;
+  hidePopover();
+  setModalStatus("状态：已隐藏思考按钮，解释完成后右上角提醒", "info");
+}
+
+function prepareExplainModalResult({
+  selectedText,
+  explanation,
+  note,
+  statusText,
+  statusLevel,
+  respondMode
+}) {
+  modalSourceText.textContent = selectedText;
+  modalTitle.textContent = "梗解释";
+  modalDesc.textContent = explanation;
+  modalNote.textContent = String(note || "");
+  setModalStatus(String(statusText || ""), statusLevel);
+  resetSuggestionActions("点击“回梗”获取主播回梗建议");
+  setRespondButtonState({ disabled: false, loading: false, label: "回梗" });
+  pendingRespondPlan = {
+    mode: respondMode,
+    selectedText,
+    explanation
+  };
+}
+
+async function revealModalAfterThinking(reqId) {
+  if (!selectedNode) return;
+
+  setPopoverExplainState("expanded");
+  showPopoverNear(selectedNode);
+  await sleepMs(MORPH_PREPARE_MS);
+  if (reqId !== activeExplainRequestId) return;
+
+  const sourceRect = danmakuPopover.getBoundingClientRect();
+  hidePopover();
+  setPopoverExplainState("idle");
+  showModalWithCurrentContent();
+
+  const modalCard = explainModal.querySelector(".explain-card");
+  if (!modalCard || !sourceRect.width || !sourceRect.height) return;
+
+  clearModalMorphState();
+  const cardRect = modalCard.getBoundingClientRect();
+  if (!cardRect.width || !cardRect.height) return;
+
+  const sourceCenterX = sourceRect.left + sourceRect.width / 2;
+  const sourceCenterY = sourceRect.top + sourceRect.height / 2;
+  const targetCenterX = cardRect.left + cardRect.width / 2;
+  const targetCenterY = cardRect.top + cardRect.height / 2;
+
+  explainModal.style.setProperty("--morph-translate-x", `${sourceCenterX - targetCenterX}px`);
+  explainModal.style.setProperty("--morph-translate-y", `${sourceCenterY - targetCenterY}px`);
+  explainModal.style.setProperty("--morph-scale-x", `${sourceRect.width / cardRect.width}`);
+  explainModal.style.setProperty("--morph-scale-y", `${sourceRect.height / cardRect.height}`);
+
+  explainModal.classList.add("is-morphing", "is-morph-start");
+  void modalCard.offsetWidth;
+  window.requestAnimationFrame(() => {
+    explainModal.classList.remove("is-morph-start");
+  });
+
+  modalMorphTimer = window.setTimeout(() => {
+    clearModalMorphState();
+  }, MORPH_DURATION_MS);
+}
+
 async function runExplainFlow(text) {
   const selectedText = String(text || "").trim();
   if (!selectedText) return;
+  if (isExplainLoading) return;
+
+  cancelRespondFlow("已取消上一条回梗请求", { keepStatus: false });
+  pendingRespondPlan = null;
+  hideReadyBubble();
 
   const reqId = ++activeExplainRequestId;
+  const requestController = new AbortController();
+  activeExplainAbortController = requestController;
   isExplainLoading = true;
-  popoverExplainBtn.disabled = true;
+  isPopoverHiddenWhileThinking = false;
 
   showModalLoading(selectedText);
-  hidePopover();
+  setPopoverExplainState("thinking");
+  if (selectedNode) showPopoverNear(selectedNode);
+  setModalStatus("状态：梗小虎正在思考中，再次点击可取消，或点隐藏", "loading");
+  hideModal();
 
   try {
     const explainData = await requestJson(
@@ -503,63 +758,149 @@ async function runExplainFlow(text) {
         barrage: selectedText,
         model: APP_CONFIG.model
       },
-      { timeoutMs: EXPLAIN_TIMEOUT_MS }
+      { timeoutMs: EXPLAIN_TIMEOUT_MS, signal: requestController.signal }
     );
 
     if (reqId !== activeExplainRequestId) return;
 
-    modalTitle.textContent = "梗解释";
-    modalDesc.textContent = explainData.explanation || FALLBACK_TEXT;
-    modalNote.textContent = explainData.found
-      ? "已结合联网结果生成解释。"
-      : "未检索到明确梗义，已返回固定兜底文案。";
-    setModalStatus("状态：解释已完成，正在生成回梗建议", explainData.found ? "success" : "warn");
+    prepareExplainModalResult({
+      selectedText,
+      explanation: explainData.explanation || FALLBACK_TEXT,
+      note: "",
+      statusText: "",
+      statusLevel: explainData.found ? "success" : "warn",
+      respondMode: "api"
+    });
 
     emitBotBroadcast(explainData.bot_broadcast || explainData.explanation || "");
-
-    const respondData = await requestJson(
-      "/api/meme/respond",
-      {
-        streamer_id: APP_CONFIG.streamerId,
-        barrage: selectedText,
-        explanation: explainData.explanation || FALLBACK_TEXT,
-        model: APP_CONFIG.model
-      },
-      { timeoutMs: RESPOND_TIMEOUT_MS }
-    );
-
-    if (reqId !== activeExplainRequestId) return;
-
-    renderSuggestionActions(selectedText, respondData, false);
-    setModalStatus("状态：回梗建议已生成，可一键发送", "success");
+    if (isPopoverHiddenWhileThinking) {
+      setPopoverExplainState("idle");
+      hidePopover();
+      showReadyBubble(selectedText);
+      setModalStatus("", "success");
+    } else {
+      await revealModalAfterThinking(reqId);
+    }
   } catch (error) {
     if (reqId !== activeExplainRequestId) return;
+    if (error.message === "请求已取消") return;
 
     const fallbackExplain = buildAiDanmakuExplain(selectedText);
-    modalTitle.textContent = "梗解释";
-    modalDesc.textContent = `后端请求失败，先给你一个本地解释：${fallbackExplain}`;
-    modalNote.textContent = "请检查后端服务、网络或密钥配置后重试。";
-
-    renderSuggestionActions(selectedText, buildFallbackSuggestions(selectedText), true);
-    setModalStatus(`状态：请求失败，已本地兜底（${error.message}）`, "error");
+    prepareExplainModalResult({
+      selectedText,
+      explanation: `后端请求失败，先给你一个本地解释：${fallbackExplain}`,
+      note: "请检查后端服务、网络或密钥配置后重试；点击“回梗”将使用本地建议。",
+      statusText: `状态：请求失败，已本地兜底（${error.message}）`,
+      statusLevel: "error",
+      respondMode: "local"
+    });
+    if (isPopoverHiddenWhileThinking) {
+      setPopoverExplainState("idle");
+      hidePopover();
+      showReadyBubble(selectedText);
+    } else {
+      await revealModalAfterThinking(reqId);
+    }
 
     console.warn("[explain/respond]", error);
   } finally {
     if (reqId === activeExplainRequestId) {
       isExplainLoading = false;
-      popoverExplainBtn.disabled = false;
+      activeExplainAbortController = null;
+      isPopoverHiddenWhileThinking = false;
+      setPopoverExplainState("idle");
     }
   }
 }
 
-function selectDanmaku(node) {
-  if (selectedNode && selectedNode !== node) {
-    selectedNode.classList.remove("is-selected", "is-frozen");
+async function runRespondFlow() {
+  if (!pendingRespondPlan || isRespondLoading) return;
+
+  const plan = pendingRespondPlan;
+  isRespondLoading = true;
+  setRespondButtonState({ disabled: true, loading: true, label: "回梗中..." });
+  resetSuggestionActions("回梗建议生成中…");
+  setModalStatus("状态：正在生成回梗建议", "loading");
+
+  try {
+    let respondData;
+    if (plan.mode === "api") {
+      const controller = new AbortController();
+      activeRespondAbortController = controller;
+      respondData = await requestJson(
+        "/api/meme/respond",
+        {
+          streamer_id: APP_CONFIG.streamerId,
+          barrage: plan.selectedText,
+          explanation: plan.explanation || FALLBACK_TEXT,
+          model: APP_CONFIG.model
+        },
+        { timeoutMs: RESPOND_TIMEOUT_MS, signal: controller.signal }
+      );
+    } else {
+      await sleepMs(260);
+      respondData = buildFallbackSuggestions(plan.selectedText);
+    }
+
+    if (plan !== pendingRespondPlan) return;
+
+    renderSuggestionActions(plan.selectedText, respondData, plan.mode !== "api");
+    setModalStatus("状态：回梗建议已生成，可一键发送", "success");
+  } catch (error) {
+    if (error.message === "请求已取消") return;
+    if (plan !== pendingRespondPlan) return;
+
+    renderSuggestionActions(plan.selectedText, buildFallbackSuggestions(plan.selectedText), true);
+    setModalStatus(`状态：回梗请求失败，已本地兜底（${error.message}）`, "error");
+    console.warn("[meme/respond]", error);
+  } finally {
+    if (plan === pendingRespondPlan) {
+      isRespondLoading = false;
+      activeRespondAbortController = null;
+      setRespondButtonState({ disabled: false, loading: false, label: "重新回梗" });
+    }
   }
+}
+
+function selectSourceNode(node, sourceType = "danmaku") {
+  if (!node) return;
+
+  if (isExplainLoading) {
+    cancelExplainFlow("已切换目标，已取消上一条梗解释", { keepPopover: false, keepStatus: false });
+  }
+  cancelRespondFlow("已切换目标，已取消上一条回梗请求", { keepStatus: false });
+  pendingRespondPlan = null;
+  isPopoverHiddenWhileThinking = false;
+  hideReadyBubble();
+  resetSuggestionActions();
+  setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
+
+  if (selectedNode && selectedNode !== node) {
+    selectedNode.classList.remove("is-selected", "is-frozen", "hotword-item--active");
+  }
+
   selectedNode = node;
-  selectedNode.classList.add("is-selected", "is-frozen");
+  selectedNode.classList.add("is-selected");
+  if (sourceType === "danmaku") {
+    selectedNode.classList.add("is-frozen");
+  } else if (sourceType === "hotword") {
+    selectedNode.classList.add("hotword-item--active");
+  }
+
+  setPopoverExplainState("idle");
   hideModal();
   showPopoverNear(node);
+}
+
+function selectDanmaku(node) {
+  selectSourceNode(node, "danmaku");
+}
+
+function selectHotword(node) {
+  const text = String(node?.dataset?.text || "").trim();
+  if (!text) return;
+  updateNotice(`已选中热词「${text}」，可和弹幕一样点击“梗解释”触发。`, "info");
+  selectSourceNode(node, "hotword");
 }
 
 function createDanmaku(text, source = "自动弹幕", options = {}) {
@@ -631,6 +972,9 @@ function bootstrap() {
   syncViewerCount();
   getLaneMetrics();
   renderHotwords([], false);
+  hideReadyBubble();
+  resetSuggestionActions();
+  setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
   checkBackendHealth();
 
   for (let i = 0; i < 10; i += 1) {
@@ -708,7 +1052,14 @@ toggleBtn.addEventListener("click", () => {
 
 popoverExplainBtn.addEventListener("click", async (event) => {
   event.stopPropagation();
-  if (!selectedNode || isExplainLoading) return;
+  if (!selectedNode) return;
+
+  if (isExplainLoading) {
+    cancelExplainFlow("已取消本次梗解释", { keepPopover: true, keepStatus: true });
+    setPopoverExplainState("idle");
+    showPopoverNear(selectedNode);
+    return;
+  }
 
   const selectedText = selectedNode.dataset.text || "这条弹幕";
   await runExplainFlow(selectedText);
@@ -716,14 +1067,29 @@ popoverExplainBtn.addEventListener("click", async (event) => {
 
 popoverCloseBtn.addEventListener("click", (event) => {
   event.stopPropagation();
+  if (isExplainLoading) {
+    hideThinkingPopover();
+    return;
+  }
   clearSelection();
 });
 
 modalCloseBtn.addEventListener("click", hideModal);
 
 modalRefreshBtn.addEventListener("click", async () => {
-  if (!selectedNode || isExplainLoading) return;
+  if (!selectedNode || isExplainLoading || isRespondLoading) return;
   await runExplainFlow(selectedNode.dataset.text || "这条弹幕");
+});
+
+respondTriggerBtn.addEventListener("click", async () => {
+  if (!pendingRespondPlan || isRespondLoading) return;
+  await runRespondFlow();
+});
+
+explainReadyBubble.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (!pendingRespondPlan) return;
+  showModalWithCurrentContent();
 });
 
 explainModal.addEventListener("click", (event) => {
@@ -738,7 +1104,7 @@ playerFrame.addEventListener("click", (event) => {
 
 window.addEventListener("resize", () => {
   getLaneMetrics();
-  if (selectedNode) showPopoverNear(selectedNode);
+  if (selectedNode && !danmakuPopover.classList.contains("is-hidden")) showPopoverNear(selectedNode);
 });
 
 document.addEventListener("keydown", (event) => {
