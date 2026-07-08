@@ -1987,3 +1987,70 @@ body {
   transform: none;
   filter: none;
 }
+
+/* Audience + Chat merged block, hotword overlays chat region */
+.chat-sidebar {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.audience-chat-stack {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid #e7ecf3;
+  background: #ffffff;
+}
+
+.audience-chat-stack .ranking-card {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.chat-stack {
+  min-height: 0;
+  position: relative;
+  border-top: 1px solid #e8edf5;
+  background: #ffffff;
+}
+
+.chat-stack #chat-list {
+  height: 100%;
+  padding-top: 122px;
+}
+
+.chat-stack #hotword-card {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 6;
+  margin: 0;
+}
+
+.chat-stack #hotword-card.is-collapsed {
+  left: auto;
+  right: 12px;
+  top: 10px;
+  transform: none;
+}
+
+.chat-stack #hotword-card.is-collapsed ~ #chat-list {
+  padding-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .chat-sidebar {
+    grid-template-rows: auto minmax(220px, 1fr) auto;
+  }
+
+  .chat-stack #hotword-card {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+  }
+}
