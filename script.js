@@ -1829,16 +1829,21 @@ explainReadyBubble.addEventListener("click", (event) => {
 });
 
 explainModal.addEventListener("click", (event) => {
-  if (event.target === explainModal) hideModal();
+  // 梗解释框只允许通过右上角关闭按钮关闭，点击遮罩不关闭。
+  event.stopPropagation();
 });
 
 if (contributeModal) {
   contributeModal.addEventListener("click", (event) => {
-    if (event.target === contributeModal) hideContributeModal();
+    // 补充框只允许通过右上角关闭按钮关闭，点击遮罩不关闭。
+    event.stopPropagation();
   });
 }
 
 playerFrame.addEventListener("click", (event) => {
+  const isExplainModalOpen = explainModal && !explainModal.classList.contains("is-hidden");
+  const isContributeOpen = contributeModal && !contributeModal.classList.contains("is-hidden");
+  if (isContributeOpen || isExplainModalOpen) return;
   const insidePopover = danmakuPopover.contains(event.target);
   const insideModalCard = event.target.closest(".explain-card");
   if (!insidePopover && !insideModalCard) clearSelection();
@@ -1851,7 +1856,11 @@ window.addEventListener("resize", () => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && contributeModal && !contributeModal.classList.contains("is-hidden")) {
-    hideContributeModal();
+    // 补充框开启时，不允许通过 ESC 关闭，需点击关闭按钮。
+    return;
+  }
+  if (event.key === "Escape" && explainModal && !explainModal.classList.contains("is-hidden")) {
+    // 梗解释框开启时，不允许通过 ESC 关闭，需点击关闭按钮。
     return;
   }
   if (event.key === "Escape") clearSelection();
