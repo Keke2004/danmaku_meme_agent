@@ -227,6 +227,7 @@ let currentExplainMeta = {
   userScore: null,
   selectedText: "",
   explanation: "",
+  interactionUserId: "",
   feedbackEnabled: false,
   officialExplanation: "",
   userExplanation: "",
@@ -281,6 +282,10 @@ function getOrCreateLocalUserId() {
 }
 
 const LOCAL_USER_ID = getOrCreateLocalUserId();
+
+function buildInteractionUserId() {
+  return `${LOCAL_USER_ID}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function scoreFromStar(starIndex) {
   const idx = Number(starIndex) - 1;
@@ -451,6 +456,7 @@ function resetRatingState() {
     userScore: null,
     selectedText: "",
     explanation: "",
+    interactionUserId: "",
     feedbackEnabled: false,
     officialExplanation: "",
     userExplanation: "",
@@ -470,7 +476,9 @@ async function submitMemeRating(starIndex) {
   const score = scoreFromStar(starIndex);
   if (!score) return;
   const selectedText = String(currentExplainMeta.selectedText || "").trim();
+  const interactionUserId = String(currentExplainMeta.interactionUserId || "").trim();
   if (!selectedText) return;
+  if (!interactionUserId) return;
 
   setRatingLoading(true);
   setModalStatus(`状态：正在提交${score}分评分`, "loading");
@@ -482,7 +490,7 @@ async function submitMemeRating(starIndex) {
         streamer_id: APP_CONFIG.streamerId,
         barrage: selectedText,
         score,
-        user_id: LOCAL_USER_ID,
+        user_id: interactionUserId,
         kb_key: currentExplainMeta.kbKey || undefined
       },
       { timeoutMs: REQUEST_TIMEOUT_MS }
@@ -493,7 +501,7 @@ async function submitMemeRating(starIndex) {
     currentExplainMeta.ratingCount = Number(rateData.rating_count || 0);
     currentExplainMeta.userScore = normalizeUserScore(rateData.user_score) || score;
     renderRatingUI();
-    setModalStatus(`状态：已评分 ${score} 分（可再次点击修正）`, "success");
+    setModalStatus(`状态：本轮已评分 ${score} 分`, "success");
   } catch (error) {
     setModalStatus(`状态：评分失败（${error.message}）`, "error");
     console.warn("[meme/rate]", error);
@@ -507,7 +515,9 @@ async function submitMemeFeedback(target, vote) {
   const feedbackTarget = String(target || "").trim().toLowerCase();
   const feedbackVote = normalizeFeedbackVote(vote);
   const selectedText = String(currentExplainMeta.selectedText || "").trim();
+  const interactionUserId = String(currentExplainMeta.interactionUserId || "").trim();
   if (!selectedText || !currentExplainMeta.feedbackEnabled || isFeedbackLoading) return;
+  if (!interactionUserId) return;
   if (!["official", "user"].includes(feedbackTarget) || !feedbackVote) return;
   if (feedbackTarget === "user" && !String(currentExplainMeta.userExplanationId || "").trim()) return;
 
@@ -518,7 +528,7 @@ async function submitMemeFeedback(target, vote) {
     const payload = {
       streamer_id: APP_CONFIG.streamerId,
       barrage: selectedText,
-      user_id: LOCAL_USER_ID,
+      user_id: interactionUserId,
       target: feedbackTarget,
       vote: feedbackVote,
       kb_key: currentExplainMeta.kbKey || undefined,
@@ -1259,6 +1269,7 @@ function prepareExplainModalResult({
   avgScore = null,
   ratingCount = 0,
   userScore = null,
+  interactionUserId = "",
   feedbackEnabled = false,
   officialExplanation = "",
   userExplanation = "",
@@ -1282,6 +1293,7 @@ function prepareExplainModalResult({
     userScore: normalizeUserScore(userScore),
     selectedText,
     explanation: String(explanation || ""),
+    interactionUserId: String(interactionUserId || ""),
     feedbackEnabled: Boolean(feedbackEnabled),
     officialExplanation: String(officialExplanation || explanation || "").trim(),
     userExplanation: String(userExplanation || "").trim(),
@@ -1357,6 +1369,7 @@ async function runExplainFlow(text) {
   const selectedText = String(text || "").trim();
   if (!selectedText) return;
   if (isExplainLoading) return;
+  const interactionUserId = buildInteractionUserId();
 
   cancelRespondFlow("已取消上一条回梗请求", { keepStatus: false });
   pendingRespondPlan = null;
@@ -1382,7 +1395,7 @@ async function runExplainFlow(text) {
         streamer_id: APP_CONFIG.streamerId,
         barrage: selectedText,
         model: APP_CONFIG.model,
-        user_id: LOCAL_USER_ID
+        user_id: interactionUserId
       },
       { timeoutMs: EXPLAIN_TIMEOUT_MS, signal: requestController.signal }
     );
@@ -1401,6 +1414,7 @@ async function runExplainFlow(text) {
       avgScore: explainData.avg_score,
       ratingCount: explainData.rating_count || 0,
       userScore: explainData.user_score,
+      interactionUserId,
       feedbackEnabled: Boolean(explainData.feedback_enabled) && explainData.explanation !== FALLBACK_TEXT,
       officialExplanation: explainData.official_explanation || explainData.explanation || "",
       userExplanation: explainData.user_explanation || "",
@@ -1435,6 +1449,7 @@ async function runExplainFlow(text) {
       statusLevel: "error",
       respondMode: "local",
       ratingEnabled: false,
+      interactionUserId,
       feedbackEnabled: false
     });
     if (isPopoverHiddenWhileThinking) {

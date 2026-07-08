@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-08T04:57:57.643124+00:00",
+  "updated_at": "2026-07-08T05:35:18.181685+00:00",
   "items": [
     {
       "key": "节目效果直接拉满",
@@ -134,13 +134,14 @@
       "official_explanation": "含义：主播看到美女、COS、黑丝等内容时，弹幕调侃其被吸引、看入迷了。",
       "user_explanations": [],
       "official_feedback": {
-        "up_count": 1,
+        "up_count": 2,
         "down_count": 0,
         "votes_by_user": {
-          "u_mrawe11g_io14desq": "up"
+          "u_mrawe11g_io14desq": "up",
+          "u_mrawe11g_io14desq_mrbn921o_n5duzu": "up"
         }
       },
-      "updated_at": "2026-07-08T04:55:39.566823+00:00",
+      "updated_at": "2026-07-08T05:35:18.181658+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
       "ratings_by_user": {}
@@ -194,13 +195,28 @@
       "key": "KING蛋",
       "value": "含义：对主播精彩操作的夸奖，意思是“蛋总像 King 一样强”。",
       "official_explanation": "含义：对主播精彩操作的夸奖，意思是“蛋总像 King 一样强”。",
-      "user_explanations": [],
+      "user_explanations": [
+        {
+          "id": "user_king蛋_1",
+          "text": "KingKing",
+          "updated_at": "2026-07-08T05:29:09.739640+00:00",
+          "feedback": {
+            "up_count": 0,
+            "down_count": 1,
+            "votes_by_user": {
+              "u_mrawe11g_io14desq": "down"
+            }
+          }
+        }
+      ],
       "official_feedback": {
-        "up_count": 0,
+        "up_count": 1,
         "down_count": 0,
-        "votes_by_user": {}
+        "votes_by_user": {
+          "u_mrawe11g_io14desq": "up"
+        }
       },
-      "updated_at": "2026-07-08T02:38:29.149212+00:00",
+      "updated_at": "2026-07-08T05:29:47.023890+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
       "ratings_by_user": {}
@@ -211,11 +227,13 @@
       "official_explanation": "含义：对主播实力的称赞，通常在高光操作后刷屏。",
       "user_explanations": [],
       "official_feedback": {
-        "up_count": 0,
+        "up_count": 1,
         "down_count": 0,
-        "votes_by_user": {}
+        "votes_by_user": {
+          "u_mrawe11g_io14desq": "up"
+        }
       },
-      "updated_at": "2026-07-08T02:38:29.149212+00:00",
+      "updated_at": "2026-07-08T05:30:23.854609+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
       "ratings_by_user": {}
