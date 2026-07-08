@@ -24,6 +24,8 @@ const toggleBtn = document.getElementById("toggle-btn");
 const chatList = document.getElementById("chat-list");
 const sidebarViewerCount = document.getElementById("sidebar-viewer-count");
 const heatPill = document.getElementById("heat-pill");
+const hotwordCard = document.getElementById("hotword-card");
+const hotwordToggleBtn = document.getElementById("hotword-toggle-btn");
 const hotwordStatus = document.getElementById("hotword-status");
 const hotwordList = document.getElementById("hotword-list");
 const noticeBox = document.querySelector(".notice-box");
@@ -179,6 +181,7 @@ let modalDragStartX = 0;
 let modalDragStartY = 0;
 let modalDragOriginX = 0;
 let modalDragOriginY = 0;
+let isHotwordPanelCollapsed = false;
 const MORPH_PREPARE_MS = 260;
 const MORPH_DURATION_MS = 700;
 let isRatingLoading = false;
@@ -415,6 +418,27 @@ function truncateHotwordText(text, maxChars = 10) {
   const chars = Array.from(source);
   if (chars.length <= maxChars) return source;
   return `${chars.slice(0, maxChars).join("")}…`;
+}
+
+function setHotwordPanelCollapsed(collapsed) {
+  if (!hotwordCard || !hotwordToggleBtn) return;
+  isHotwordPanelCollapsed = Boolean(collapsed);
+  hotwordCard.classList.toggle("is-collapsed", isHotwordPanelCollapsed);
+
+  if (isHotwordPanelCollapsed) {
+    hotwordToggleBtn.textContent = "热";
+    hotwordToggleBtn.setAttribute("aria-label", "展开实时热词");
+    hotwordToggleBtn.title = "点击展开实时热词";
+  } else {
+    hotwordToggleBtn.textContent = "收起";
+    hotwordToggleBtn.setAttribute("aria-label", "收起实时热词");
+    hotwordToggleBtn.title = "点击收起实时热词";
+  }
+}
+
+function toggleHotwordPanel(event) {
+  if (event) event.stopPropagation();
+  setHotwordPanelCollapsed(!isHotwordPanelCollapsed);
 }
 
 function resolveApiUrl(path) {
@@ -1241,6 +1265,7 @@ function bootstrap() {
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
   checkBackendHealth();
+  setHotwordPanelCollapsed(false);
 
   for (let i = 0; i < 10; i += 1) {
     window.setTimeout(() => createDanmaku(randomFrom(seedDanmaku), "初始弹幕"), i * 220);
@@ -1321,6 +1346,10 @@ if (toggleBtn) {
       node.classList.toggle("is-paused", isPaused);
     });
   });
+}
+
+if (hotwordToggleBtn) {
+  hotwordToggleBtn.addEventListener("click", toggleHotwordPanel);
 }
 
 popoverExplainBtn.addEventListener("click", async (event) => {
