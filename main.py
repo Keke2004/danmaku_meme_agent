@@ -11,6 +11,7 @@ import argparse
 import csv
 import json
 import os
+import random
 import re
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -89,6 +90,16 @@ class MemeExplainOut(BaseModel):
     rating_count: int = 0
     user_score: Optional[int] = None
     rating_enabled: bool = False
+    official_explanation: str = ""
+    user_explanation: str = ""
+    user_explanation_id: str = ""
+    official_up_count: int = 0
+    official_down_count: int = 0
+    official_user_vote: str = ""
+    user_up_count: int = 0
+    user_down_count: int = 0
+    user_user_vote: str = ""
+    feedback_enabled: bool = False
 
 
 class MemeRateIn(BaseModel):
@@ -118,6 +129,38 @@ class MemeRespondOut(BaseModel):
     safe: str
     humorous: str
     interactive: str
+
+
+class MemeContributeIn(BaseModel):
+    streamer_id: str = Field(..., min_length=1)
+    barrage: str = Field(..., min_length=1)
+    explanation: str = Field(..., min_length=1, max_length=200)
+
+
+class MemeContributeOut(BaseModel):
+    stored: bool
+    kb_key: str
+    explanation: str
+    user_explanation_id: str
+
+
+class MemeFeedbackIn(BaseModel):
+    streamer_id: str = Field(..., min_length=1)
+    barrage: str = Field(..., min_length=1)
+    user_id: str = Field(..., min_length=1, max_length=80)
+    target: str = Field(..., description="official 或 user")
+    vote: str = Field(..., description="up 或 down")
+    kb_key: Optional[str] = None
+    user_explanation_id: Optional[str] = None
+
+
+class MemeFeedbackOut(BaseModel):
+    kb_key: str
+    target: str
+    vote: str
+    user_explanation_id: str = ""
+    up_count: int
+    down_count: int
 
 
 class QuickTestIn(BaseModel):
@@ -156,6 +199,7 @@ _kb_entries: list[dict[str, Any]] = []
 _kb_entry_index: dict[str, int] = {}
 _kb_last_mtime: Optional[float] = None
 VALID_RATING_SCORES = {2, 4, 6, 8, 10}
+VALID_FEEDBACK_VOTES = {"up", "down"}
 
 
 def _now_utc() -> datetime:
@@ -276,6 +320,111 @@ def _normalize_score(value: Any) -> Optional[int]:
     return None
 
 
+def _normalize_feedback_vote(value: Any) -> str:
+    vote = str(value or "").strip().lower()
+    if vote in VALID_FEEDBACK_VOTES:
+        return vote
+    return ""
+
+
+def _normalize_feedback_state(raw: Any) -> dict[str, Any]:
+    up_count = 0
+    down_count = 0
+    votes_by_user: dict[str, str] = {}
+
+    if isinstance(raw, dict):
+        up_count = max(0, _safe_int(raw.get("up_count"), 0))
+        down_count = max(0, _safe_int(raw.get("down_count"), 0))
+        raw_votes = raw.get("votes_by_user")
+        if isinstance(raw_votes, dict):
+            for raw_uid, raw_vote in raw_votes.items():
+                uid = _normalize_user_id(raw_uid)
+                vote = _normalize_feedback_vote(raw_vote)
+                if not uid or not vote:
+                    continue
+                votes_by_user[uid] = vote
+
+    if votes_by_user:
+        up_count = sum(1 for v in votes_by_user.values() if v == "up")
+        down_count = sum(1 for v in votes_by_user.values() if v == "down")
+
+    return {
+        "up_count": up_count,
+        "down_count": down_count,
+        "votes_by_user": votes_by_user,
+    }
+
+
+def _feedback_summary_from_state(state: dict[str, Any], user_id: Optional[str] = None) -> dict[str, Any]:
+    up_count = max(0, _safe_int(state.get("up_count"), 0))
+    down_count = max(0, _safe_int(state.get("down_count"), 0))
+    user_vote = ""
+    uid = _normalize_user_id(user_id)
+    if uid:
+        raw_votes = state.get("votes_by_user")
+        if isinstance(raw_votes, dict):
+            user_vote = _normalize_feedback_vote(raw_votes.get(uid))
+    return {
+        "up_count": up_count,
+        "down_count": down_count,
+        "user_vote": user_vote,
+    }
+
+
+def _apply_feedback_vote_to_state(
+    state: dict[str, Any], user_id: str, vote: str
+) -> dict[str, Any]:
+    uid = _normalize_user_id(user_id)
+    normalized_vote = _normalize_feedback_vote(vote)
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id 不能为空。")
+    if not normalized_vote:
+        raise HTTPException(status_code=400, detail="vote 仅支持 up/down。")
+
+    feedback_state = _normalize_feedback_state(state)
+    votes_by_user = dict(feedback_state.get("votes_by_user") or {})
+    votes_by_user[uid] = normalized_vote
+    up_count = sum(1 for v in votes_by_user.values() if v == "up")
+    down_count = sum(1 for v in votes_by_user.values() if v == "down")
+    return {
+        "up_count": up_count,
+        "down_count": down_count,
+        "votes_by_user": votes_by_user,
+    }
+
+
+def _normalize_user_explanations(raw: Any, normalized_key: str) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+
+    normalized_items: list[dict[str, Any]] = []
+    for idx, item in enumerate(raw, start=1):
+        if isinstance(item, str):
+            text = str(item).strip()
+            item_id = f"user_{normalized_key[:16]}_{idx}"
+            updated_at = ""
+            feedback = _normalize_feedback_state({})
+        elif isinstance(item, dict):
+            text = str(item.get("text", "") or item.get("value", "") or "").strip()
+            item_id = str(item.get("id", "") or "").strip() or f"user_{normalized_key[:16]}_{idx}"
+            updated_at = str(item.get("updated_at", "") or "").strip()
+            feedback = _normalize_feedback_state(item.get("feedback"))
+        else:
+            continue
+
+        if not text or text == FALLBACK_TEXT:
+            continue
+        normalized_items.append(
+            {
+                "id": item_id[:80],
+                "text": text[:200],
+                "updated_at": updated_at,
+                "feedback": feedback,
+            }
+        )
+    return normalized_items
+
+
 def _extract_rating_state(record: dict[str, Any]) -> tuple[float, int, dict[str, int]]:
     rating_total = max(0.0, _safe_float(record.get("rating_total"), 0.0))
     rating_count = max(0, _safe_int(record.get("rating_count"), 0))
@@ -334,17 +483,32 @@ def _build_kb_state_from_records(
 
     for record in records:
         key_raw = str(record.get("key", "") or "").strip()
-        val_raw = str(record.get("value", "") or "").strip()
         updated_at = str(record.get("updated_at", "") or "").strip()
         rating_total, rating_count, ratings_by_user = _extract_rating_state(record)
+        legacy_value = str(record.get("value", "") or "").strip()
+        official_raw = str(record.get("official_explanation", "") or "").strip() or legacy_value
 
         normalized_key = _normalize_kb_key(key_raw)
-        if not normalized_key or not val_raw or val_raw == FALLBACK_TEXT:
+        if not normalized_key:
             continue
 
+        user_explanations = _normalize_user_explanations(
+            record.get("user_explanations"), normalized_key
+        )
+        official_feedback = _normalize_feedback_state(record.get("official_feedback"))
+
+        has_official = bool(official_raw and official_raw != FALLBACK_TEXT)
+        has_user = bool(user_explanations)
+        if not has_official and not has_user:
+            continue
+
+        lookup_value = official_raw if has_official else str(user_explanations[0]["text"])
         normalized_record = {
             "key": key_raw,
-            "value": val_raw,
+            "value": lookup_value,
+            "official_explanation": official_raw if has_official else "",
+            "user_explanations": user_explanations,
+            "official_feedback": official_feedback,
             "updated_at": updated_at,
             "rating_total": rating_total,
             "rating_count": rating_count,
@@ -358,7 +522,7 @@ def _build_kb_state_from_records(
             entries.append(normalized_record)
             keys.append(normalized_key)
 
-        mapping[normalized_key] = val_raw
+        mapping[normalized_key] = lookup_value
 
     return mapping, keys, entries, index_map
 
@@ -566,6 +730,9 @@ def _upsert_kb_entry(key: str, value: str) -> bool:
                 {
                     "key": clean_key,
                     "value": clean_value,
+                    "official_explanation": clean_value,
+                    "user_explanations": [],
+                    "official_feedback": _normalize_feedback_state({}),
                     "updated_at": now_iso,
                     "rating_total": 0.0,
                     "rating_count": 0,
@@ -574,11 +741,18 @@ def _upsert_kb_entry(key: str, value: str) -> bool:
             )
         else:
             existing_index = _kb_entry_index[normalized_key]
-            existing_entry = _kb_entries[existing_index]
+            existing_entry = dict(_kb_entries[existing_index])
             rating_total, rating_count, ratings_by_user = _extract_rating_state(existing_entry)
+            user_explanations = _normalize_user_explanations(
+                existing_entry.get("user_explanations"), normalized_key
+            )
+            official_feedback = _normalize_feedback_state(existing_entry.get("official_feedback"))
             _kb_entries[existing_index] = {
                 "key": clean_key,
                 "value": clean_value,
+                "official_explanation": clean_value,
+                "user_explanations": user_explanations,
+                "official_feedback": official_feedback,
                 "updated_at": now_iso,
                 "rating_total": rating_total,
                 "rating_count": rating_count,
@@ -606,6 +780,222 @@ def _get_rating_summary_by_normalized_key(
             return {"avg_score": None, "rating_count": 0, "user_score": None}
         entry = _kb_entries[idx]
         return _rating_summary_from_entry(entry, user_id)
+
+
+def _build_explain_detail_from_entry(
+    entry: Optional[dict[str, Any]], user_id: Optional[str] = None
+) -> dict[str, Any]:
+    if not entry:
+        return {
+            "official_explanation": "",
+            "user_explanation": "",
+            "user_explanation_id": "",
+            "official_up_count": 0,
+            "official_down_count": 0,
+            "official_user_vote": "",
+            "user_up_count": 0,
+            "user_down_count": 0,
+            "user_user_vote": "",
+        }
+
+    official_explanation = str(entry.get("official_explanation", "") or entry.get("value", "") or "").strip()
+    official_feedback = _feedback_summary_from_state(
+        _normalize_feedback_state(entry.get("official_feedback")), user_id
+    )
+
+    user_explanation = ""
+    user_explanation_id = ""
+    user_feedback = {"up_count": 0, "down_count": 0, "user_vote": ""}
+    user_items = _normalize_user_explanations(
+        entry.get("user_explanations"), _normalize_kb_key(entry.get("key", ""))
+    )
+    if user_items:
+        picked = random.choice(user_items)
+        user_explanation = str(picked.get("text", "") or "").strip()
+        user_explanation_id = str(picked.get("id", "") or "").strip()
+        user_feedback = _feedback_summary_from_state(
+            _normalize_feedback_state(picked.get("feedback")), user_id
+        )
+
+    return {
+        "official_explanation": official_explanation,
+        "user_explanation": user_explanation,
+        "user_explanation_id": user_explanation_id,
+        "official_up_count": official_feedback["up_count"],
+        "official_down_count": official_feedback["down_count"],
+        "official_user_vote": official_feedback["user_vote"],
+        "user_up_count": user_feedback["up_count"],
+        "user_down_count": user_feedback["down_count"],
+        "user_user_vote": user_feedback["user_vote"],
+    }
+
+
+def _get_kb_entry_snapshot_by_key(normalized_key: str) -> Optional[dict[str, Any]]:
+    if not normalized_key:
+        return None
+
+    _reload_kb_if_updated()
+    with _kb_lock:
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+        idx = _kb_entry_index.get(normalized_key)
+        if idx is None:
+            return None
+        return dict(_kb_entries[idx])
+
+
+def _append_user_explanation_entry(key: str, explanation: str) -> tuple[bool, str, str]:
+    clean_key = str(key or "").strip()
+    clean_text = str(explanation or "").strip()
+    normalized_key = _normalize_kb_key(clean_key)
+    if not normalized_key or not clean_text or clean_text == FALLBACK_TEXT:
+        return False, "", ""
+
+    now_iso = _now_utc().isoformat()
+    with _kb_lock:
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+
+        if normalized_key not in _kb_keys:
+            _kb_keys.append(normalized_key)
+            _kb_entry_index[normalized_key] = len(_kb_entries)
+            user_id = f"user_{normalized_key[:16]}_1"
+            user_item = {
+                "id": user_id,
+                "text": clean_text[:200],
+                "updated_at": now_iso,
+                "feedback": _normalize_feedback_state({}),
+            }
+            entry = {
+                "key": clean_key,
+                "value": clean_text[:200],
+                "official_explanation": "",
+                "user_explanations": [user_item],
+                "official_feedback": _normalize_feedback_state({}),
+                "updated_at": now_iso,
+                "rating_total": 0.0,
+                "rating_count": 0,
+                "ratings_by_user": {},
+            }
+            _kb_entries.append(entry)
+            _kb_exact[normalized_key] = clean_text[:200]
+            _persist_kb_to_disk_unlocked()
+            return True, normalized_key, user_id
+
+        existing_index = _kb_entry_index[normalized_key]
+        existing_entry = dict(_kb_entries[existing_index])
+        user_items = _normalize_user_explanations(existing_entry.get("user_explanations"), normalized_key)
+        matched_id = ""
+        for item in user_items:
+            if str(item.get("text", "")).strip() == clean_text:
+                item["updated_at"] = now_iso
+                matched_id = str(item.get("id", "")).strip()
+                break
+        if not matched_id:
+            next_index = len(user_items) + 1
+            matched_id = f"user_{normalized_key[:16]}_{next_index}"
+            user_items.append(
+                {
+                    "id": matched_id,
+                    "text": clean_text[:200],
+                    "updated_at": now_iso,
+                    "feedback": _normalize_feedback_state({}),
+                }
+            )
+
+        official_explanation = str(
+            existing_entry.get("official_explanation", "") or existing_entry.get("value", "") or ""
+        ).strip()
+        has_official = bool(official_explanation and official_explanation != FALLBACK_TEXT)
+        lookup_value = official_explanation if has_official else str(user_items[0]["text"])
+        rating_total, rating_count, ratings_by_user = _extract_rating_state(existing_entry)
+        official_feedback = _normalize_feedback_state(existing_entry.get("official_feedback"))
+
+        _kb_entries[existing_index] = {
+            "key": clean_key,
+            "value": lookup_value,
+            "official_explanation": official_explanation if has_official else "",
+            "user_explanations": user_items,
+            "official_feedback": official_feedback,
+            "updated_at": now_iso,
+            "rating_total": rating_total,
+            "rating_count": rating_count,
+            "ratings_by_user": ratings_by_user,
+        }
+        _kb_exact[normalized_key] = lookup_value
+        _persist_kb_to_disk_unlocked()
+        return True, normalized_key, matched_id
+
+
+def _apply_meme_feedback_vote(
+    normalized_key: str,
+    user_id: str,
+    target: str,
+    vote: str,
+    user_explanation_id: Optional[str] = None,
+) -> dict[str, Any]:
+    target_norm = str(target or "").strip().lower()
+    if target_norm not in {"official", "user"}:
+        raise HTTPException(status_code=400, detail="target 仅支持 official/user。")
+    vote_norm = _normalize_feedback_vote(vote)
+    if not vote_norm:
+        raise HTTPException(status_code=400, detail="vote 仅支持 up/down。")
+
+    uid = _normalize_user_id(user_id)
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id 不能为空。")
+
+    with _kb_lock:
+        if _kb_last_mtime is None:
+            _load_kb_from_disk_unlocked()
+
+        idx = _kb_entry_index.get(normalized_key)
+        if idx is None:
+            raise HTTPException(status_code=404, detail="该梗尚未入库，暂不可操作赞踩。")
+
+        entry = dict(_kb_entries[idx])
+        if target_norm == "official":
+            official_explanation = str(
+                entry.get("official_explanation", "") or entry.get("value", "") or ""
+            ).strip()
+            if not official_explanation or official_explanation == FALLBACK_TEXT:
+                raise HTTPException(status_code=400, detail="当前没有可赞踩的官方解释。")
+            feedback_state = _apply_feedback_vote_to_state(
+                _normalize_feedback_state(entry.get("official_feedback")), uid, vote_norm
+            )
+            entry["official_feedback"] = feedback_state
+            result_user_expl_id = ""
+        else:
+            target_id = str(user_explanation_id or "").strip()
+            user_items = _normalize_user_explanations(
+                entry.get("user_explanations"), _normalize_kb_key(entry.get("key", ""))
+            )
+            matched = None
+            for item in user_items:
+                if str(item.get("id", "")).strip() == target_id:
+                    matched = item
+                    break
+            if matched is None:
+                raise HTTPException(status_code=404, detail="未找到对应的用户解释。")
+            matched["feedback"] = _apply_feedback_vote_to_state(
+                _normalize_feedback_state(matched.get("feedback")), uid, vote_norm
+            )
+            entry["user_explanations"] = user_items
+            feedback_state = matched["feedback"]
+            result_user_expl_id = target_id
+
+        entry["updated_at"] = _now_utc().isoformat()
+        _kb_entries[idx] = entry
+        _persist_kb_to_disk_unlocked()
+
+    return {
+        "kb_key": normalized_key,
+        "target": target_norm,
+        "vote": vote_norm,
+        "user_explanation_id": result_user_expl_id,
+        "up_count": max(0, _safe_int(feedback_state.get("up_count"), 0)),
+        "down_count": max(0, _safe_int(feedback_state.get("down_count"), 0)),
+    }
 
 
 def _resolve_existing_kb_key(kb_key_hint: Optional[str], barrage: str) -> str:
@@ -1044,6 +1434,13 @@ def meme_explain(payload: MemeExplainIn) -> MemeExplainOut:
         if rating_enabled
         else {"avg_score": None, "rating_count": 0, "user_score": None}
     )
+    entry_snapshot = _get_kb_entry_snapshot_by_key(kb_key or "") if kb_key else None
+    explain_detail = _build_explain_detail_from_entry(entry_snapshot, payload.user_id)
+    feedback_enabled = explanation != FALLBACK_TEXT and bool(kb_key)
+    official_explanation = str(explain_detail["official_explanation"] or "").strip()
+    if not official_explanation and explanation != FALLBACK_TEXT and not explain_detail["user_explanation"]:
+        # 某些异常场景下（例如刚写入但快照为空）保留一份可显示的官方解释。
+        official_explanation = explanation
 
     return MemeExplainOut(
         found=found,
@@ -1055,6 +1452,16 @@ def meme_explain(payload: MemeExplainIn) -> MemeExplainOut:
         rating_count=rating_summary["rating_count"],
         user_score=rating_summary["user_score"],
         rating_enabled=rating_enabled,
+        official_explanation=official_explanation,
+        user_explanation=explain_detail["user_explanation"],
+        user_explanation_id=explain_detail["user_explanation_id"],
+        official_up_count=explain_detail["official_up_count"] if feedback_enabled else 0,
+        official_down_count=explain_detail["official_down_count"] if feedback_enabled else 0,
+        official_user_vote=explain_detail["official_user_vote"] if feedback_enabled else "",
+        user_up_count=explain_detail["user_up_count"] if feedback_enabled else 0,
+        user_down_count=explain_detail["user_down_count"] if feedback_enabled else 0,
+        user_user_vote=explain_detail["user_user_vote"] if feedback_enabled else "",
+        feedback_enabled=feedback_enabled,
     )
 
 
@@ -1086,6 +1493,48 @@ def meme_rate(payload: MemeRateIn) -> MemeRateOut:
         score=payload.score,
     )
     return MemeRateOut(**result)
+
+
+@app.post("/api/meme/contribute", response_model=MemeContributeOut)
+def meme_contribute(payload: MemeContributeIn) -> MemeContributeOut:
+    clean_barrage = str(payload.barrage or "").strip()
+    clean_explanation = str(payload.explanation or "").strip()
+    if not clean_barrage:
+        raise HTTPException(status_code=400, detail="barrage 不能为空。")
+    if not clean_explanation:
+        raise HTTPException(status_code=400, detail="explanation 不能为空。")
+    if clean_explanation == FALLBACK_TEXT:
+        raise HTTPException(status_code=400, detail="不能提交兜底文案，请输入你自己的解释。")
+
+    stored, normalized_key, user_explanation_id = _append_user_explanation_entry(
+        clean_barrage, clean_explanation
+    )
+    if not stored or not normalized_key:
+        raise HTTPException(status_code=400, detail="写入失败，请检查梗文本和解释内容。")
+
+    _kb_log(f"用户补充解释已写入 key={clean_barrage!r}")
+    return MemeContributeOut(
+        stored=True,
+        kb_key=normalized_key,
+        explanation=clean_explanation,
+        user_explanation_id=user_explanation_id,
+    )
+
+
+@app.post("/api/meme/feedback", response_model=MemeFeedbackOut)
+def meme_feedback(payload: MemeFeedbackIn) -> MemeFeedbackOut:
+    normalized_key = _resolve_existing_kb_key(payload.kb_key, payload.barrage)
+    if not normalized_key:
+        raise HTTPException(status_code=404, detail="该梗尚未入库，暂不可操作赞踩。")
+
+    result = _apply_meme_feedback_vote(
+        normalized_key=normalized_key,
+        user_id=payload.user_id,
+        target=payload.target,
+        vote=payload.vote,
+        user_explanation_id=payload.user_explanation_id,
+    )
+    return MemeFeedbackOut(**result)
 
 
 @app.post("/api/test/quick", response_model=QuickTestOut)

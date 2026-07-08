@@ -82,7 +82,31 @@
                   <p id="modal-source-text">——</p>
                 </div>
 
-                <p id="modal-desc" class="explain-desc">点击弹幕后，这里会展示这条梗的解释。</p>
+                <div id="explain-compare-panel" class="explain-compare-panel is-hidden">
+                  <div class="explain-compare-block">
+                    <div class="explain-compare-head">
+                      <span class="quote-label">官方解释</span>
+                    </div>
+                    <p id="official-explain-text" class="explain-compare-text">暂无</p>
+                    <div id="official-feedback-row" class="feedback-row">
+                      <button id="official-up-btn" class="feedback-btn" type="button">👍 赞</button>
+                      <button id="official-down-btn" class="feedback-btn" type="button">👎 踩</button>
+                      <span id="official-feedback-count" class="feedback-count">赞 0 · 踩 0</span>
+                    </div>
+                  </div>
+                  <div id="user-explain-block" class="explain-compare-block is-hidden">
+                    <div class="explain-compare-head">
+                      <span class="quote-label">用户解释</span>
+                    </div>
+                    <p id="user-explain-text" class="explain-compare-text">暂无用户补充</p>
+                    <div id="user-feedback-row" class="feedback-row">
+                      <button id="user-up-btn" class="feedback-btn" type="button">👍 赞</button>
+                      <button id="user-down-btn" class="feedback-btn" type="button">👎 踩</button>
+                      <span id="user-feedback-count" class="feedback-count">赞 0 · 踩 0</span>
+                    </div>
+                  </div>
+                </div>
+                <button id="user-explain-btn" class="user-explain-btn is-hidden" type="button">我来解释</button>
 
                 <div class="suggestions-box">
                   <div class="suggestion-head">
@@ -110,6 +134,25 @@
                     <span id="rating-summary" class="rating-summary">均分 --</span>
                   </div>
                   <button id="modal-refresh-btn" type="button">重新请求解释</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="contribute-modal" class="contribute-modal is-hidden" aria-hidden="true">
+              <div class="contribute-card" role="dialog" aria-label="补充梗解释">
+                <div id="contribute-header" class="contribute-header">
+                  <strong>补充梗解释</strong>
+                  <button id="contribute-close-btn" class="icon-btn" type="button" aria-label="关闭">×</button>
+                </div>
+                <p class="contribute-tip">输入你对这条梗的解释，提交后会写入知识库。</p>
+                <textarea
+                  id="contribute-input"
+                  class="contribute-input"
+                  maxlength="200"
+                  placeholder="例如：这个梗的含义是……来源是……"
+                ></textarea>
+                <div class="contribute-footer">
+                  <button id="contribute-submit-btn" type="button">提交解释</button>
                 </div>
               </div>
             </div>

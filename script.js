@@ -7,7 +7,7 @@ const explainModal = document.getElementById("explain-modal");
 const modalCloseBtn = document.getElementById("modal-close-btn");
 const modalRefreshBtn = document.getElementById("modal-refresh-btn");
 const modalSourceText = document.getElementById("modal-source-text");
-const modalDesc = document.getElementById("modal-desc");
+const userExplainBtn = document.getElementById("user-explain-btn");
 const modalNote = document.getElementById("modal-note");
 const modalStatus = document.getElementById("modal-status");
 const ratingPanel = document.getElementById("rating-panel");
@@ -35,6 +35,24 @@ const popoverExplainIcon = popoverExplainBtn.querySelector(".popover-icon");
 const popoverExplainLabel = popoverExplainBtn.querySelector(".popover-label");
 const popoverCloseIcon = popoverCloseBtn.querySelector(".popover-close-icon");
 const popoverCloseLabel = popoverCloseBtn.querySelector(".popover-close-label");
+const contributeModal = document.getElementById("contribute-modal");
+const contributeCard = contributeModal ? contributeModal.querySelector(".contribute-card") : null;
+const contributeHeader = document.getElementById("contribute-header");
+const contributeInput = document.getElementById("contribute-input");
+const contributeCloseBtn = document.getElementById("contribute-close-btn");
+const contributeSubmitBtn = document.getElementById("contribute-submit-btn");
+const explainComparePanel = document.getElementById("explain-compare-panel");
+const officialExplainText = document.getElementById("official-explain-text");
+const officialUpBtn = document.getElementById("official-up-btn");
+const officialDownBtn = document.getElementById("official-down-btn");
+const officialFeedbackCount = document.getElementById("official-feedback-count");
+const officialFeedbackRow = document.getElementById("official-feedback-row");
+const userExplainBlock = document.getElementById("user-explain-block");
+const userExplainText = document.getElementById("user-explain-text");
+const userUpBtn = document.getElementById("user-up-btn");
+const userDownBtn = document.getElementById("user-down-btn");
+const userFeedbackCount = document.getElementById("user-feedback-count");
+const userFeedbackRow = document.getElementById("user-feedback-row");
 
 const APP_CONFIG = Object.freeze({
   apiBase: window.DANMAKU_API_BASE || "http://127.0.0.1:8000",
@@ -190,17 +208,31 @@ let modalDragStartX = 0;
 let modalDragStartY = 0;
 let modalDragOriginX = 0;
 let modalDragOriginY = 0;
+let isContributeDragging = false;
+let contributeDragPointerId = null;
+let contributeDragStartX = 0;
+let contributeDragStartY = 0;
+let contributeDragOriginX = 0;
+let contributeDragOriginY = 0;
 let isHotwordPanelCollapsed = false;
 const MORPH_PREPARE_MS = 260;
 const MORPH_DURATION_MS = 700;
 let isRatingLoading = false;
+let isFeedbackLoading = false;
 let currentExplainMeta = {
   ratingEnabled: false,
   kbKey: "",
   avgScore: null,
   ratingCount: 0,
   userScore: null,
-  selectedText: ""
+  selectedText: "",
+  explanation: "",
+  feedbackEnabled: false,
+  officialExplanation: "",
+  userExplanation: "",
+  userExplanationId: "",
+  officialFeedback: { upCount: 0, downCount: 0, userVote: "" },
+  userFeedback: { upCount: 0, downCount: 0, userVote: "" }
 };
 
 function getLaneMetrics() {
@@ -274,6 +306,107 @@ function normalizeUserScore(raw) {
   return SCORE_BY_STAR.includes(parsed) ? parsed : null;
 }
 
+function normalizeFeedbackCount(raw) {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function normalizeFeedbackVote(raw) {
+  const vote = String(raw || "").trim().toLowerCase();
+  return vote === "up" || vote === "down" ? vote : "";
+}
+
+function formatFeedbackCount(upCount, downCount) {
+  return `赞 ${normalizeFeedbackCount(upCount)} · 踩 ${normalizeFeedbackCount(downCount)}`;
+}
+
+function setFeedbackActiveState(upBtn, downBtn, userVote) {
+  if (!upBtn || !downBtn) return;
+  const vote = normalizeFeedbackVote(userVote);
+  upBtn.classList.toggle("is-active-up", vote === "up");
+  downBtn.classList.toggle("is-active-down", vote === "down");
+}
+
+function setFeedbackButtonsDisabled(disabled) {
+  [officialUpBtn, officialDownBtn, userUpBtn, userDownBtn].forEach((btn) => {
+    if (btn) btn.disabled = Boolean(disabled);
+  });
+}
+
+function hasFallbackExplanation() {
+  return String(currentExplainMeta.explanation || "").trim() === FALLBACK_TEXT;
+}
+
+function hasUserExplanation() {
+  const pickedUserText = String(currentExplainMeta.userExplanation || "").trim();
+  return Boolean(pickedUserText && currentExplainMeta.userExplanationId);
+}
+
+function refreshUserExplainEntryPointVisibility() {
+  const shouldShowByFallback = hasFallbackExplanation();
+  const shouldShowByNoUser = !hasFallbackExplanation() && !hasUserExplanation();
+  const shouldShowByDownVote =
+    normalizeFeedbackVote(currentExplainMeta.officialFeedback?.userVote) === "down" ||
+    normalizeFeedbackVote(currentExplainMeta.userFeedback?.userVote) === "down";
+  setUserExplainButtonVisibility(shouldShowByFallback || shouldShowByNoUser || shouldShowByDownVote);
+}
+
+function renderExplainComparePanel() {
+  if (
+    !explainComparePanel ||
+    !officialExplainText ||
+    !officialFeedbackCount ||
+    !userExplainBlock ||
+    !userExplainText ||
+    !userFeedbackCount
+  ) {
+    return;
+  }
+
+  const feedbackEnabled = Boolean(currentExplainMeta.feedbackEnabled) && !hasFallbackExplanation();
+  explainComparePanel.classList.remove("is-hidden");
+
+  const officialText = String(
+    currentExplainMeta.officialExplanation || currentExplainMeta.explanation || ""
+  ).trim();
+  const hasOfficial = Boolean(officialText);
+  officialExplainText.textContent = officialText || "暂无官方解释";
+  if (officialFeedbackRow) {
+    officialFeedbackRow.classList.toggle("is-hidden", !feedbackEnabled);
+  }
+  officialFeedbackCount.textContent = formatFeedbackCount(
+    currentExplainMeta.officialFeedback?.upCount,
+    currentExplainMeta.officialFeedback?.downCount
+  );
+  setFeedbackActiveState(officialUpBtn, officialDownBtn, currentExplainMeta.officialFeedback?.userVote);
+  if (officialUpBtn) officialUpBtn.disabled = isFeedbackLoading || !hasOfficial || !feedbackEnabled;
+  if (officialDownBtn) officialDownBtn.disabled = isFeedbackLoading || !hasOfficial || !feedbackEnabled;
+
+  const pickedUserText = String(currentExplainMeta.userExplanation || "").trim();
+  const hasUser = Boolean(pickedUserText && currentExplainMeta.userExplanationId);
+  if (!hasUser) {
+    userExplainBlock.classList.remove("is-hidden");
+    userExplainText.textContent = "暂无用户补充";
+    if (userFeedbackRow) userFeedbackRow.classList.add("is-hidden");
+    userFeedbackCount.textContent = "赞 0 · 踩 0";
+    setFeedbackActiveState(userUpBtn, userDownBtn, "");
+    if (userUpBtn) userUpBtn.disabled = true;
+    if (userDownBtn) userDownBtn.disabled = true;
+    return;
+  }
+
+  userExplainBlock.classList.remove("is-hidden");
+  if (userFeedbackRow) userFeedbackRow.classList.toggle("is-hidden", !feedbackEnabled);
+  userExplainText.textContent = pickedUserText;
+  userFeedbackCount.textContent = formatFeedbackCount(
+    currentExplainMeta.userFeedback?.upCount,
+    currentExplainMeta.userFeedback?.downCount
+  );
+  setFeedbackActiveState(userUpBtn, userDownBtn, currentExplainMeta.userFeedback?.userVote);
+  if (userUpBtn) userUpBtn.disabled = isFeedbackLoading || !feedbackEnabled;
+  if (userDownBtn) userDownBtn.disabled = isFeedbackLoading || !feedbackEnabled;
+}
+
 function setRatingLoading(loading = false) {
   isRatingLoading = loading;
   ratingStars.forEach((star) => {
@@ -316,10 +449,20 @@ function resetRatingState() {
     avgScore: null,
     ratingCount: 0,
     userScore: null,
-    selectedText: ""
+    selectedText: "",
+    explanation: "",
+    feedbackEnabled: false,
+    officialExplanation: "",
+    userExplanation: "",
+    userExplanationId: "",
+    officialFeedback: { upCount: 0, downCount: 0, userVote: "" },
+    userFeedback: { upCount: 0, downCount: 0, userVote: "" }
   };
+  isFeedbackLoading = false;
   setRatingLoading(false);
   renderRatingUI();
+  renderExplainComparePanel();
+  refreshUserExplainEntryPointVisibility();
 }
 
 async function submitMemeRating(starIndex) {
@@ -357,6 +500,58 @@ async function submitMemeRating(starIndex) {
   } finally {
     setRatingLoading(false);
     renderRatingUI();
+  }
+}
+
+async function submitMemeFeedback(target, vote) {
+  const feedbackTarget = String(target || "").trim().toLowerCase();
+  const feedbackVote = normalizeFeedbackVote(vote);
+  const selectedText = String(currentExplainMeta.selectedText || "").trim();
+  if (!selectedText || !currentExplainMeta.feedbackEnabled || isFeedbackLoading) return;
+  if (!["official", "user"].includes(feedbackTarget) || !feedbackVote) return;
+  if (feedbackTarget === "user" && !String(currentExplainMeta.userExplanationId || "").trim()) return;
+
+  isFeedbackLoading = true;
+  renderExplainComparePanel();
+
+  try {
+    const payload = {
+      streamer_id: APP_CONFIG.streamerId,
+      barrage: selectedText,
+      user_id: LOCAL_USER_ID,
+      target: feedbackTarget,
+      vote: feedbackVote,
+      kb_key: currentExplainMeta.kbKey || undefined,
+      user_explanation_id:
+        feedbackTarget === "user" ? currentExplainMeta.userExplanationId || undefined : undefined
+    };
+    const data = await requestJson("/api/meme/feedback", payload, { timeoutMs: REQUEST_TIMEOUT_MS });
+
+    currentExplainMeta.kbKey = String(data.kb_key || currentExplainMeta.kbKey || "");
+    if (feedbackTarget === "official") {
+      currentExplainMeta.officialFeedback = {
+        upCount: normalizeFeedbackCount(data.up_count),
+        downCount: normalizeFeedbackCount(data.down_count),
+        userVote: feedbackVote
+      };
+    } else {
+      currentExplainMeta.userFeedback = {
+        upCount: normalizeFeedbackCount(data.up_count),
+        downCount: normalizeFeedbackCount(data.down_count),
+        userVote: feedbackVote
+      };
+      if (data.user_explanation_id) {
+        currentExplainMeta.userExplanationId = String(data.user_explanation_id);
+      }
+    }
+
+    renderExplainComparePanel();
+    refreshUserExplainEntryPointVisibility();
+  } catch (error) {
+    console.warn("[meme/feedback]", error);
+  } finally {
+    isFeedbackLoading = false;
+    renderExplainComparePanel();
   }
 }
 
@@ -468,8 +663,10 @@ function bumpViewerCount() {
 
 function updateNotice(message, level = "info") {
   if (!noticeBox) return;
-  noticeBox.textContent = message;
+  const text = String(message || "").trim();
+  noticeBox.textContent = text;
   noticeBox.dataset.level = level;
+  noticeBox.classList.toggle("is-hidden", !text);
 }
 
 function createChatMessage(name, text, badge = "") {
@@ -619,6 +816,111 @@ function hideModal() {
   explainModal.setAttribute("aria-hidden", "true");
 }
 
+function setUserExplainButtonVisibility(show) {
+  if (!userExplainBtn) return;
+  userExplainBtn.classList.toggle("is-hidden", !show);
+}
+
+function resetContributeModalDragOffset() {
+  if (!contributeCard) return;
+  contributeCard.style.setProperty("--contrib-drag-x", "0px");
+  contributeCard.style.setProperty("--contrib-drag-y", "0px");
+  contributeCard.classList.remove("is-dragging");
+  isContributeDragging = false;
+  contributeDragPointerId = null;
+}
+
+function showContributeModal() {
+  if (!contributeModal) return;
+  contributeModal.classList.remove("is-hidden");
+  contributeModal.setAttribute("aria-hidden", "false");
+}
+
+function hideContributeModal() {
+  if (!contributeModal) return;
+  contributeModal.classList.add("is-hidden");
+  contributeModal.setAttribute("aria-hidden", "true");
+}
+
+function startContributeDrag(event) {
+  if (!contributeHeader || !contributeCard) return;
+  if (event.button !== 0) return;
+  if (event.target.closest("button")) return;
+
+  isContributeDragging = true;
+  contributeDragPointerId = event.pointerId;
+  contributeDragStartX = event.clientX;
+  contributeDragStartY = event.clientY;
+  contributeDragOriginX = parsePxValue(
+    contributeCard.style.getPropertyValue("--contrib-drag-x")
+  );
+  contributeDragOriginY = parsePxValue(
+    contributeCard.style.getPropertyValue("--contrib-drag-y")
+  );
+  contributeCard.classList.add("is-dragging");
+  try {
+    contributeHeader.setPointerCapture(event.pointerId);
+  } catch (_) {
+    // Ignore pointer-capture failures; window listeners still work.
+  }
+}
+
+function handleContributeDragMove(event) {
+  if (!isContributeDragging || !contributeCard) return;
+  if (contributeDragPointerId !== null && event.pointerId !== contributeDragPointerId) return;
+
+  const nextX = contributeDragOriginX + (event.clientX - contributeDragStartX);
+  const nextY = contributeDragOriginY + (event.clientY - contributeDragStartY);
+  contributeCard.style.setProperty("--contrib-drag-x", `${nextX}px`);
+  contributeCard.style.setProperty("--contrib-drag-y", `${nextY}px`);
+}
+
+function stopContributeDrag(event) {
+  if (!isContributeDragging || !contributeCard) return;
+  if (contributeDragPointerId !== null && event.pointerId !== contributeDragPointerId) return;
+
+  isContributeDragging = false;
+  contributeDragPointerId = null;
+  contributeCard.classList.remove("is-dragging");
+}
+
+async function submitUserExplanation() {
+  const selectedText = String(currentExplainMeta.selectedText || "").trim();
+  if (!selectedText || !contributeInput || !contributeSubmitBtn) return;
+
+  const userText = String(contributeInput.value || "").trim();
+  if (!userText) {
+    setModalStatus("状态：请先输入你的解释内容", "warn");
+    contributeInput.focus();
+    return;
+  }
+
+  contributeSubmitBtn.disabled = true;
+  contributeSubmitBtn.textContent = "提交中...";
+  try {
+    const data = await requestJson("/api/meme/contribute", {
+      streamer_id: APP_CONFIG.streamerId,
+      barrage: selectedText,
+      explanation: userText
+    });
+
+    currentExplainMeta.kbKey = String(data.kb_key || currentExplainMeta.kbKey || "");
+    currentExplainMeta.userExplanation = String(data.explanation || userText || "").trim();
+    currentExplainMeta.userExplanationId = String(data.user_explanation_id || "").trim();
+    currentExplainMeta.feedbackEnabled = !hasFallbackExplanation();
+    currentExplainMeta.userFeedback = { upCount: 0, downCount: 0, userVote: "" };
+    renderExplainComparePanel();
+    refreshUserExplainEntryPointVisibility();
+    setModalStatus("状态：感谢补充，已写入知识库", "success");
+    hideContributeModal();
+  } catch (error) {
+    setModalStatus(`状态：提交失败（${error.message}）`, "error");
+  } finally {
+    contributeSubmitBtn.disabled = false;
+    contributeSubmitBtn.textContent = "提交解释";
+  }
+}
+
 function clearSelection() {
   cancelExplainFlow("已取消本次梗解释", { keepPopover: false });
   cancelRespondFlow("已取消本次回梗", { keepStatus: false });
@@ -632,7 +934,11 @@ function clearSelection() {
   hideReadyBubble();
   hidePopover();
   hideModal();
+  hideContributeModal();
   resetModalDragOffset();
+  resetContributeModalDragOffset();
+  setUserExplainButtonVisibility(false);
+  if (contributeInput) contributeInput.value = "";
   resetRatingState();
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
@@ -793,7 +1099,7 @@ async function checkBackendHealth() {
   try {
     const response = await fetch(resolveApiUrl("/health"), { signal: controller.signal });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    updateNotice("点击弹幕即可获得真实梗解释与回梗建议。", "success");
+    updateNotice("", "success");
     setModalStatus("状态：后端在线", "success");
   } catch (error) {
     updateNotice("后端暂未连通，当前可继续体验弹幕；点击梗解释会使用本地兜底。", "warn");
@@ -822,7 +1128,9 @@ async function syncDanmakuToBackend(content, username) {
 
 function showModalLoading(text) {
   modalSourceText.textContent = text;
-  modalDesc.textContent = "正在联网检索并生成解释，请稍候…";
+  setUserExplainButtonVisibility(false);
+  hideContributeModal();
+  if (contributeInput) contributeInput.value = "";
   modalNote.textContent = "解释完成后，可点击“回梗”生成建议。";
   resetRatingState();
   setModalStatus("状态：正在请求梗解释", "loading");
@@ -950,10 +1258,21 @@ function prepareExplainModalResult({
   kbKey = "",
   avgScore = null,
   ratingCount = 0,
-  userScore = null
+  userScore = null,
+  feedbackEnabled = false,
+  officialExplanation = "",
+  userExplanation = "",
+  userExplanationId = "",
+  officialUpCount = 0,
+  officialDownCount = 0,
+  officialUserVote = "",
+  userUpCount = 0,
+  userDownCount = 0,
+  userUserVote = ""
 }) {
   modalSourceText.textContent = selectedText;
-  modalDesc.textContent = explanation;
+  hideContributeModal();
+  if (contributeInput) contributeInput.value = "";
   modalNote.textContent = String(note || "");
   currentExplainMeta = {
     ratingEnabled: Boolean(ratingEnabled),
@@ -961,10 +1280,28 @@ function prepareExplainModalResult({
     avgScore: normalizeAvgScore(avgScore),
     ratingCount: Number(ratingCount || 0),
     userScore: normalizeUserScore(userScore),
-    selectedText
+    selectedText,
+    explanation: String(explanation || ""),
+    feedbackEnabled: Boolean(feedbackEnabled),
+    officialExplanation: String(officialExplanation || explanation || "").trim(),
+    userExplanation: String(userExplanation || "").trim(),
+    userExplanationId: String(userExplanationId || "").trim(),
+    officialFeedback: {
+      upCount: normalizeFeedbackCount(officialUpCount),
+      downCount: normalizeFeedbackCount(officialDownCount),
+      userVote: normalizeFeedbackVote(officialUserVote)
+    },
+    userFeedback: {
+      upCount: normalizeFeedbackCount(userUpCount),
+      downCount: normalizeFeedbackCount(userDownCount),
+      userVote: normalizeFeedbackVote(userUserVote)
+    }
   };
+  isFeedbackLoading = false;
   setRatingLoading(false);
   renderRatingUI();
+  renderExplainComparePanel();
+  refreshUserExplainEntryPointVisibility();
   setModalStatus(String(statusText || ""), statusLevel);
   resetSuggestionActions("点击“回梗”获取主播回梗建议");
   setRespondButtonState({ disabled: false, loading: false, label: "回梗" });
@@ -1063,7 +1400,17 @@ async function runExplainFlow(text) {
       kbKey: explainData.kb_key || "",
       avgScore: explainData.avg_score,
       ratingCount: explainData.rating_count || 0,
-      userScore: explainData.user_score
+      userScore: explainData.user_score,
+      feedbackEnabled: Boolean(explainData.feedback_enabled) && explainData.explanation !== FALLBACK_TEXT,
+      officialExplanation: explainData.official_explanation || explainData.explanation || "",
+      userExplanation: explainData.user_explanation || "",
+      userExplanationId: explainData.user_explanation_id || "",
+      officialUpCount: explainData.official_up_count || 0,
+      officialDownCount: explainData.official_down_count || 0,
+      officialUserVote: explainData.official_user_vote || "",
+      userUpCount: explainData.user_up_count || 0,
+      userDownCount: explainData.user_down_count || 0,
+      userUserVote: explainData.user_user_vote || ""
     });
 
     emitBotBroadcast(explainData.bot_broadcast || explainData.explanation || "");
@@ -1087,7 +1434,8 @@ async function runExplainFlow(text) {
       statusText: `状态：请求失败，已本地兜底（${error.message}）`,
       statusLevel: "error",
       respondMode: "local",
-      ratingEnabled: false
+      ratingEnabled: false,
+      feedbackEnabled: false
     });
     if (isPopoverHiddenWhileThinking) {
       setPopoverExplainState("idle");
@@ -1270,6 +1618,9 @@ function bootstrap() {
   initModalDrag();
   renderHotwords([], false);
   hideReadyBubble();
+  hideContributeModal();
+  setUserExplainButtonVisibility(false);
+  resetContributeModalDragOffset();
   resetRatingState();
   resetSuggestionActions();
   setRespondButtonState({ disabled: true, loading: false, label: "回梗" });
@@ -1361,6 +1712,41 @@ if (hotwordToggleBtn) {
   hotwordToggleBtn.addEventListener("click", toggleHotwordPanel);
 }
 
+if (userExplainBtn) {
+  userExplainBtn.addEventListener("click", () => {
+    if (contributeInput) contributeInput.value = "";
+    resetContributeModalDragOffset();
+    showContributeModal();
+    window.setTimeout(() => contributeInput?.focus(), 0);
+  });
+}
+
+if (contributeCloseBtn) {
+  contributeCloseBtn.addEventListener("click", hideContributeModal);
+}
+
+if (contributeSubmitBtn) {
+  contributeSubmitBtn.addEventListener("click", async () => {
+    await submitUserExplanation();
+  });
+}
+
+if (contributeInput) {
+  contributeInput.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      await submitUserExplanation();
+    }
+  });
+}
+
+if (contributeHeader && contributeCard) {
+  contributeHeader.addEventListener("pointerdown", startContributeDrag);
+  window.addEventListener("pointermove", handleContributeDragMove);
+  window.addEventListener("pointerup", stopContributeDrag);
+  window.addEventListener("pointercancel", stopContributeDrag);
+}
+
 popoverExplainBtn.addEventListener("click", async (event) => {
   event.stopPropagation();
   if (!selectedNode) return;
@@ -1407,6 +1793,30 @@ ratingStars.forEach((star) => {
   });
 });
 
+if (officialUpBtn) {
+  officialUpBtn.addEventListener("click", async () => {
+    await submitMemeFeedback("official", "up");
+  });
+}
+
+if (officialDownBtn) {
+  officialDownBtn.addEventListener("click", async () => {
+    await submitMemeFeedback("official", "down");
+  });
+}
+
+if (userUpBtn) {
+  userUpBtn.addEventListener("click", async () => {
+    await submitMemeFeedback("user", "up");
+  });
+}
+
+if (userDownBtn) {
+  userDownBtn.addEventListener("click", async () => {
+    await submitMemeFeedback("user", "down");
+  });
+}
+
 respondTriggerBtn.addEventListener("click", async () => {
   if (!pendingRespondPlan || isRespondLoading) return;
   await runRespondFlow();
@@ -1422,6 +1832,12 @@ explainModal.addEventListener("click", (event) => {
   if (event.target === explainModal) hideModal();
 });
 
+if (contributeModal) {
+  contributeModal.addEventListener("click", (event) => {
+    if (event.target === contributeModal) hideContributeModal();
+  });
+}
+
 playerFrame.addEventListener("click", (event) => {
   const insidePopover = danmakuPopover.contains(event.target);
   const insideModalCard = event.target.closest(".explain-card");
@@ -1434,6 +1850,10 @@ window.addEventListener("resize", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && contributeModal && !contributeModal.classList.contains("is-hidden")) {
+    hideContributeModal();
+    return;
+  }
   if (event.key === "Escape") clearSelection();
 });
 

@@ -1,10 +1,17 @@
 {
   "version": 1,
-  "updated_at": "2026-07-08T02:38:29.149235+00:00",
+  "updated_at": "2026-07-08T04:57:57.643124+00:00",
   "items": [
     {
       "key": "节目效果直接拉满",
       "value": "含义：指场面特别搞笑、离谱或精彩，直播综艺感爆棚。来源：主播圈和综艺弹幕常用语，“拉满”意为直接顶到最大。",
+      "official_explanation": "含义：指场面特别搞笑、离谱或精彩，直播综艺感爆棚。来源：主播圈和综艺弹幕常用语，“拉满”意为直接顶到最大。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-07T17:03:51.643682+00:00",
       "rating_total": 10.0,
       "rating_count": 1,
@@ -15,6 +22,13 @@
     {
       "key": "这波属实在大气层",
       "value": "“这波属实在大气层”含义是夸某人操作、思路高到离谱，境界远超普通人。来源是网络游戏和弹幕文化里“在第五层/大气层”等夸张说法演变来的。",
+      "official_explanation": "“这波属实在大气层”含义是夸某人操作、思路高到离谱，境界远超普通人。来源是网络游戏和弹幕文化里“在第五层/大气层”等夸张说法演变来的。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:34:15.819303+00:00",
       "rating_total": 10.0,
       "rating_count": 1,
@@ -25,7 +39,14 @@
     {
       "key": "哈哈哈哈绷不住了",
       "value": "“绷不住了”含义是憋不住情绪了，多指突然爆笑破防；来源是游戏、直播圈里“绷不住”说法走红，后来成了弹幕常用梗。",
-      "updated_at": "2026-07-07T13:11:15.942702+00:00",
+      "official_explanation": "“绷不住了”含义是憋不住情绪了，多指突然爆笑破防；来源是游戏、直播圈里“绷不住”说法走红，后来成了弹幕常用梗。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
+      "updated_at": "2026-07-08T04:49:30.163381+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
       "ratings_by_user": {}
@@ -33,6 +54,13 @@
     {
       "key": "别急，让子弹飞一会儿",
       "value": "“别急，让子弹飞一会儿”是经典网络梗，含义是“先别下结论，等结果发酵再看”。来源于姜文电影《让子弹飞》里张麻子的台词。",
+      "official_explanation": "“别急，让子弹飞一会儿”是经典网络梗，含义是“先别下结论，等结果发酵再看”。来源于姜文电影《让子弹飞》里张麻子的台词。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T01:30:24.148355+00:00",
       "rating_total": 10.0,
       "rating_count": 1,
@@ -43,6 +71,13 @@
     {
       "key": "666",
       "value": "含义：弹幕“666”是夸你厉害、操作秀。来源：游戏直播里“溜溜溜”谐音数字化，后来全网通用。",
+      "official_explanation": "含义：弹幕“666”是夸你厉害、操作秀。来源：游戏直播里“溜溜溜”谐音数字化，后来全网通用。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-07T16:24:01.926516+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -51,6 +86,13 @@
     {
       "key": "牛逼",
       "value": "“牛逼”含义是“太厉害了、真强、绝了”，常用于夸人或感叹。来源原本是粗口俚语，后来在网络和日常聊天里被广泛玩梗化。",
+      "official_explanation": "“牛逼”含义是“太厉害了、真强、绝了”，常用于夸人或感叹。来源原本是粗口俚语，后来在网络和日常聊天里被广泛玩梗化。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-07T16:31:29.707130+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -59,6 +101,13 @@
     {
       "key": "主播这句话信息量过大",
       "value": "含义：吐槽一句话里细节太多、太劲爆，脑子一时处理不过来。来源：ACG弹幕圈常用语“信息量很大”演变而来。",
+      "official_explanation": "含义：吐槽一句话里细节太多、太劲爆，脑子一时处理不过来。来源：ACG弹幕圈常用语“信息量很大”演变而来。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -67,6 +116,13 @@
     {
       "key": "吴世勋",
       "value": "含义：调侃 DANK1NG 某些角度长得像韩国艺人吴世勋，后来发展成直播间最具代表性的外貌梗。",
+      "official_explanation": "含义：调侃 DANK1NG 某些角度长得像韩国艺人吴世勋，后来发展成直播间最具代表性的外貌梗。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -75,7 +131,16 @@
     {
       "key": "流蛋液",
       "value": "含义：主播看到美女、COS、黑丝等内容时，弹幕调侃其被吸引、看入迷了。",
-      "updated_at": "2026-07-08T02:38:29.149212+00:00",
+      "official_explanation": "含义：主播看到美女、COS、黑丝等内容时，弹幕调侃其被吸引、看入迷了。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 1,
+        "down_count": 0,
+        "votes_by_user": {
+          "u_mrawe11g_io14desq": "up"
+        }
+      },
+      "updated_at": "2026-07-08T04:55:39.566823+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
       "ratings_by_user": {}
@@ -83,6 +148,13 @@
     {
       "key": "紫色别断",
       "value": "含义：源于一次游戏中紫色队友关键时刻失误，后来泛指队友掉链子、关键局失误。",
+      "official_explanation": "含义：源于一次游戏中紫色队友关键时刻失误，后来泛指队友掉链子、关键局失误。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -91,6 +163,13 @@
     {
       "key": "老戏骨",
       "value": "含义：调侃主播喜欢演节目效果、一本正经胡说八道、故意装傻。",
+      "official_explanation": "含义：调侃主播喜欢演节目效果、一本正经胡说八道、故意装傻。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -99,6 +178,13 @@
     {
       "key": "Major启动",
       "value": "含义：调侃主播进入认真模式，仿佛马上就要去打 Major 职业赛事。",
+      "official_explanation": "含义：调侃主播进入认真模式，仿佛马上就要去打 Major 职业赛事。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -107,6 +193,13 @@
     {
       "key": "KING蛋",
       "value": "含义：对主播精彩操作的夸奖，意思是“蛋总像 King 一样强”。",
+      "official_explanation": "含义：对主播精彩操作的夸奖，意思是“蛋总像 King 一样强”。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -115,6 +208,13 @@
     {
       "key": "蛋神",
       "value": "含义：对主播实力的称赞，通常在高光操作后刷屏。",
+      "official_explanation": "含义：对主播实力的称赞，通常在高光操作后刷屏。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -123,6 +223,13 @@
     {
       "key": "空悲切",
       "value": "含义：主播常说的口头禅，用于表达遗憾、可惜、差一点成功。",
+      "official_explanation": "含义：主播常说的口头禅，用于表达遗憾、可惜、差一点成功。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 0,
+        "down_count": 0,
+        "votes_by_user": {}
+      },
       "updated_at": "2026-07-08T02:38:29.149212+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
@@ -131,7 +238,16 @@
     {
       "key": "双汇火腿肠",
       "value": "含义：源于直播中的经典节目效果，后来成为直播间固定玩梗内容。",
-      "updated_at": "2026-07-08T02:38:29.149212+00:00",
+      "official_explanation": "含义：源于直播中的经典节目效果，后来成为直播间固定玩梗内容。",
+      "user_explanations": [],
+      "official_feedback": {
+        "up_count": 1,
+        "down_count": 0,
+        "votes_by_user": {
+          "u_mrawe11g_io14desq": "up"
+        }
+      },
+      "updated_at": "2026-07-08T04:57:57.643110+00:00",
       "rating_total": 0.0,
       "rating_count": 0,
       "ratings_by_user": {}
